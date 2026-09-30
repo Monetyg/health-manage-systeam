@@ -1,48 +1,18 @@
-import mongoose from "mongoose";
+/** 集合名常量. */
+export const COLL = {
+  User: "User",
+  CardKey: "CardKey",
+  RegionUnit: "RegionUnit",
+  Cert: "Cert",
+} as const;
 
-/** 用户：一级唯一总管 / 二级账号 */
-export const User = mongoose.models.User || mongoose.model("User", new mongoose.Schema({
-  username: { type: String, unique: true },
-  passwordHash: String,
-  /** 明文密码仅一级可见（方便你发号），二级接口永不返回该字段 */
-  plainPwd: String,
-  role: { type: String, enum: ["L1", "L2"] },
-  status: { type: String, default: "ok" },
-  createdBy: String,
-}, { timestamps: true }));
-
-/** 卡密：8位、时长制 */
-export const CardKey = mongoose.models.CardKey || mongoose.model("CardKey", new mongoose.Schema({
-  code: { type: String, unique: true },
-  type: { type: String, enum: ["HOUR_1", "DAY_1", "WEEK_1", "MONTH_1"] },
-  status: { type: String, default: "unused" },
-  createdByL2: String,
-  usedAt: Date,
-  expireAt: Date,
-}, { timestamps: true }));
-
-/** 地区→单位映射 */
-export const RegionUnit = mongoose.models.RegionUnit || mongoose.model("RegionUnit", new mongoose.Schema({
-  regionKeyword: String,
-  unitName: String,
-  regionCode: { type: String, default: "SZ" },
-}, { timestamps: true }));
-
-/** 健康证 */
-export const Cert = mongoose.models.Cert || mongoose.model("Cert", new mongoose.Schema({
-  certNo: { type: String, unique: true },
-  name: String,
-  idCardMask: String,
-  gender: String,
-  province: String,
-  region: String,
-  unitName: String,
-  /** 电子版字段：不加会被strict模式静默丢弃 */
-  organ: String,
-  age: String,
-  template: String,
-  photoUrl: String,
-  examDate: String,
-  verifyExpireAt: Date,
-  createdBy: String,
-}, { timestamps: true }));
+/** 基础文档类型（CloudBase 的 _id 是字符串）. */
+export type DbDoc = { _id: string; createdAt?: unknown; updatedAt?: unknown; [k: string]: unknown };
+/** 用户文档. */
+export type UserDoc = DbDoc & { username: string; passwordHash: string; plainPwd?: string; role: "L1" | "L2"; status?: string; createdBy?: string };
+/** 卡密文档. */
+export type CardKeyDoc = DbDoc & { code: string; type: "HOUR_1" | "DAY_1" | "WEEK_1" | "MONTH_1"; status: string; createdByL2?: string; usedAt?: unknown; expireAt?: unknown };
+/** 地区映射文档. */
+export type RegionUnitDoc = DbDoc & { regionKeyword: string; unitName: string; regionCode?: string };
+/** 健康证文档. */
+export type CertDoc = DbDoc & { certNo: string; [k: string]: unknown };

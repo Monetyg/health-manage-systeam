@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import QRCode from "qrcode";
 import { dbConnect } from "@/lib/db";
-import { Cert, RegionUnit, User } from "@/lib/models";
+import { getDb } from "@/lib/cloudbase";
+import { COLL, type UserDoc, type RegionUnitDoc } from "@/lib/models";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
 
@@ -17,11 +18,11 @@ function bjDay() {
 }
 
 /**
- * 办证：L1/L2无限制直办；三级需pass且在有效期内。
- * 简化版：照片传URL（先填任意图床/本地名），后接云存储。
+ * 办证：L1/L2无限制直办；三级需pass且在有效期内.
  */
 export async function POST(req: Request) {
   await dbConnect();
+  const db = getDb();
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
@@ -34,11 +35,16 @@ export async function POST(req: Request) {
   if (token) {
     try {
       const me = await readToken<{ uid: string; username: string }>(token);
-      const u = await User.findById(me.uid);
+      let u: UserDoc | null = null;
+      try {
+        u = (await db.collection(COLL.User).doc(String(me.uid)).get()).data[0] as unknown as UserDoc | undefined ?? null;
+      } catch {
+        u = null;
+      }
       if (!u || u.status === "disabled") {
         return NextResponse.json({ error: "账号已禁用", disabled: true }, { status: 403 });
       }
-      createdBy = u.username;
+      createdBy = u.username as string;
     } catch {
       return NextResponse.json({ error: "登录已过期，请重新登录" }, { status: 401 });
     }
@@ -53,10 +59,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  const map = await RegionUnit.findOne({ regionKeyword: new RegExp(esc(region.trim())) });
+  const map = (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc(region.trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
   const prov = (province || "").trim() || "广东省";
-  const unitName = map?.unitName || region.trim() + "市第一人民医院";
-  const code2 = map?.regionCode || "SZ";
+  const unitName = (map?.unitName as string) || region.trim() + "市第一人民医院";
+  const code2 = (map?.regionCode as string) || "SZ";
   const day = bjDay().replace(/-/g, "");
   const examDate = bjDay();
   /** 年龄：身份证7-14位出生日期算周岁，算不出填-- */
@@ -75,24 +81,25 @@ export async function POST(req: Request) {
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
   const tpl = template === "e" ? "e" : "gd";
   /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
-  let cert: any = null;
   let certNo = "";
-  for (let i = 0; i < 3 && !cert; i++) {
-    const count = await Cert.countDocuments({ certNo: new RegExp(`^${code2}${day}`) });
-    certNo = `${code2}${day}${String(count + 1).padStart(4, "0")}`;
+  let ok = false;
+  for (let i = 0; i < 3 && !ok; i++) {
+    const total = (await db.collection(COLL.Cert).where({ certNo: db.RegExp({ regexp: "^" + code2 + day }) }).count()).total ?? 0;
+    certNo = `${code2}${day}${String(total + 1).padStart(4, "0")}`;
     try {
-      cert = await Cert.create({
+      await db.collection(COLL.Cert).add({
         certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
         province: prov, region, unitName, organ, age, template: tpl,
         photoUrl: photoUrl || "", examDate,
         verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
+        createdAt: db.serverDate(), updatedAt: db.serverDate(),
       });
-    } catch (e: any) {
-      if (e?.code !== 11000) throw e;
-      cert = null;
+      ok = true;
+    } catch {
+      ok = false;
     }
   }
-  if (!cert) return NextResponse.json({ error: "编号冲突，请重试" }, { status: 500 });
+  if (!ok) return NextResponse.json({ error: "编号冲突，请重试" }, { status: 500 });
 
   const domain = process.env.DOMAIN || "http://localhost:3000";
   const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`);

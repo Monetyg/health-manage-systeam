@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/db";
-import { User } from "@/lib/models";
+import { getDb } from "@/lib/cloudbase";
+import { COLL, type UserDoc } from "@/lib/models";
 import { verifyPwd, signUser } from "@/lib/auth";
 
 /**
- * L1/L2 登录。
+ * L1/L2 登录.
  */
 export async function POST(req: Request) {
   try {
     await dbConnect();
     const { username, password } = await req.json();
-    const u = await User.findOne({ username: String(username || "").trim() });
+    const db = getDb();
+    const u = (await db.collection(COLL.User).where({ username: String(username || "").trim() }).limit(1).get()).data[0] as unknown as UserDoc | undefined ?? null;
     if (!u || !(await verifyPwd(password, u.passwordHash))) {
       return NextResponse.json({ error: "账号或密码错误" }, { status: 401 });
     }
