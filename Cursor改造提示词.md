@@ -63,7 +63,7 @@ let _app: ReturnType<typeof cloudbase.init> | null = null;
 export function getApp() {
   if (!_app) {
     _app = cloudbase.init({
-      env: process.env.CLOUDBASE_ENV_ID,        // 环境 ID，如 tnt-7y965qmm
+      env: process.env.CLOUDBASE_ENV_ID,        // 环境 ID，如 health-manage-systeam-d3abbc5fac2
       accessKey: process.env.CLOUDBASE_APIKEY,  // 服务端 API Key
     });
   }
@@ -235,7 +235,7 @@ const c = (await getDb().collection(COLL.Cert).where({ certNo: code }).limit(1).
 
 | 变量名 | 值 |
 |---|---|
-| `CLOUDBASE_ENV_ID` | `tnt-7y965qmm` |
+| `CLOUDBASE_ENV_ID` | `health-manage-systeam-d3abbc5fac2` |
 | `CLOUDBASE_APIKEY` | 步骤 A 生成的完整 Key |
 
 （其余变量 `JWT_SECRET` / `DOMAIN` / `ADMIN_PASSWORD` / `COS_*` 照旧；`MONGODB_URI` 可留可删，已不再使用）
