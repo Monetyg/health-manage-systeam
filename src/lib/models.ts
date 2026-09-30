@@ -37,6 +37,10 @@ export const Cert = mongoose.models.Cert || mongoose.model("Cert", new mongoose.
   province: String,
   region: String,
   unitName: String,
+  /** 电子版字段：不加会被strict模式静默丢弃 */
+  organ: String,
+  age: String,
+  template: String,
   photoUrl: String,
   examDate: String,
   verifyExpireAt: Date,

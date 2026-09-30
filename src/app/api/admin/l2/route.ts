@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { dbConnect } from "@/lib/db";
 import { User, CardKey } from "@/lib/models";
 import { hashPwd } from "@/lib/auth";
 
 /**
- * 一级单人使用，免登录：直接视为一级身份。
+ * 一级鉴权：配了ADMIN_PASSWORD（生产）必须过密码门；
+ * 没配（本机开发）直接视为一级身份。
  * 注意：知道地址的人都能打开，请勿外传，上线建议加IP白名单。
  */
 async function needL1() {
-  return { role: "L1", username: "admin" };
+  const need = process.env.ADMIN_PASSWORD;
+  if (!need) return { role: "L1", username: "admin" };
+  const token = (await cookies()).get("admin_ok")?.value;
+  return token === "1" ? { role: "L1", username: "admin" } : null;
 }
 
 /**

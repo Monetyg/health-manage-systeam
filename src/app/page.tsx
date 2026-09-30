@@ -41,7 +41,7 @@ export default function Home() {
   const [authed, setAuthed] = useState(false);
   const [expire, setExpire] = useState("");
   const [f, setF] = useState({ name: "", idCard: "", province: "广东省", region: "深圳" });
-  /** 模板：gd广东纸质版 / e电子认证版（电子版少填省份） */
+  /** 模板：gd任意地区版 / e直辖市版（直辖市版少填省份） */
   const [tpl, setTpl] = useState<"gd" | "e">("gd");
   const [photo, setPhoto] = useState("");
   const [upMsg, setUpMsg] = useState("");
@@ -152,7 +152,7 @@ export default function Home() {
       <div style={{ maxWidth: 440, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <header style={{ textAlign: "center", padding: "8px 0 0" }}>
           <div style={{ color: BLUE, fontWeight: 800, fontSize: 22 }}>健康证办理</div>
-          <div style={{ color: "#7a8bb0", fontSize: 13, marginTop: 4 }}>广东省食品从业人员健康证明</div>
+          <div style={{ color: "#7a8bb0", fontSize: 13, marginTop: 4 }}>食品从业人员健康证明</div>
         </header>
 
         {/* 步骤条 */}
@@ -194,7 +194,7 @@ export default function Home() {
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               {(["gd", "e"] as const).map((t) => (
                 <button key={t} onClick={() => setTpl(t)} style={{ flex: 1, borderRadius: 10, padding: 10, fontWeight: 700, border: tpl === t ? `2px solid ${BLUE}` : "1px solid #d0ddf5", background: tpl === t ? "#e8f1ff" : "#fff", color: tpl === t ? BLUE : "#7a8bb0" }}>
-                  {t === "gd" ? "广东纸质版" : "电子认证版"}
+                  {t === "gd" ? "任意地区版" : "直辖市版"}
                 </button>
               ))}
             </div>
@@ -202,7 +202,7 @@ export default function Home() {
               <input style={input} placeholder="姓名" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
               <input style={input} placeholder="身份证号（18位）" maxLength={18} inputMode="numeric" value={f.idCard} onChange={(e) => setF({ ...f, idCard: e.target.value })} />
               {tpl === "gd" && <input style={input} placeholder="省份（如广东省）" value={f.province} onChange={(e) => setF({ ...f, province: e.target.value })} />}
-              <input style={input} placeholder="地区（如深圳）" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />
+              <input style={input} placeholder={tpl === "e" ? "直辖市（如北京）" : "地区（如深圳）"} value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />
               <label style={{ ...btn, textAlign: "center", background: "#fff", color: BLUE, border: `2px dashed ${BLUE}`, display: "block" }}>
                 {photo ? "重新选择照片" : "从相册选择照片"}
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />

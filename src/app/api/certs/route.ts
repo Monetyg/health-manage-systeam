@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import QRCode from "qrcode";
 import { dbConnect } from "@/lib/db";
-import { Cert, RegionUnit } from "@/lib/models";
+import { Cert, RegionUnit, User } from "@/lib/models";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
+
+/** 转义正则特殊字符：地区名含.*等符号时防止查错库 */
+function esc(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
+function bjDay() {
+  return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+}
 
 /**
  * 办证：L1/L2无限制直办；三级需pass且在有效期内。
@@ -22,8 +32,16 @@ export async function POST(req: Request) {
   const pass = c.get("pass")?.value;
   const token = c.get("token")?.value;
   if (token) {
-    const me = await readToken<{ username: string }>(token);
-    createdBy = me.username;
+    try {
+      const me = await readToken<{ uid: string; username: string }>(token);
+      const u = await User.findById(me.uid);
+      if (!u || u.status === "disabled") {
+        return NextResponse.json({ error: "账号已禁用", disabled: true }, { status: 403 });
+      }
+      createdBy = u.username;
+    } catch {
+      return NextResponse.json({ error: "登录已过期，请重新登录" }, { status: 401 });
+    }
   } else if (pass) {
     try {
       const p = await readToken<{ code: string }>(pass);
@@ -35,17 +53,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  const map = await RegionUnit.findOne({ regionKeyword: new RegExp(region.trim()) });
+  const map = await RegionUnit.findOne({ regionKeyword: new RegExp(esc(region.trim())) });
   const prov = (province || "").trim() || "广东省";
   const unitName = map?.unitName || region.trim() + "市第一人民医院";
   const code2 = map?.regionCode || "SZ";
-  const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const count = await Cert.countDocuments({ certNo: new RegExp(`^${code2}${day}`) });
-  const certNo = `${code2}${day}${String(count + 1).padStart(4, "0")}`;
-
-  const domain = process.env.DOMAIN || "http://localhost:3000";
-  const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`);
-  const examDate = new Date().toISOString().slice(0, 10);
+  const day = bjDay().replace(/-/g, "");
+  const examDate = bjDay();
   /** 年龄：身份证7-14位出生日期算周岁，算不出填-- */
   let age = "--";
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(idCard.slice(6, 14));
@@ -61,11 +74,27 @@ export async function POST(req: Request) {
   const organ = region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
   const tpl = template === "e" ? "e" : "gd";
-  const cert = await Cert.create({
-    certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-    province: prov, region, unitName, organ, age, template: tpl,
-    photoUrl: photoUrl || "", examDate,
-    verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
-  });
+  /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
+  let cert: any = null;
+  let certNo = "";
+  for (let i = 0; i < 3 && !cert; i++) {
+    const count = await Cert.countDocuments({ certNo: new RegExp(`^${code2}${day}`) });
+    certNo = `${code2}${day}${String(count + 1).padStart(4, "0")}`;
+    try {
+      cert = await Cert.create({
+        certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
+        province: prov, region, unitName, organ, age, template: tpl,
+        photoUrl: photoUrl || "", examDate,
+        verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
+      });
+    } catch (e: any) {
+      if (e?.code !== 11000) throw e;
+      cert = null;
+    }
+  }
+  if (!cert) return NextResponse.json({ error: "编号冲突，请重试" }, { status: 500 });
+
+  const domain = process.env.DOMAIN || "http://localhost:3000";
+  const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`);
   return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, from: examDate, to, template: tpl });
 }

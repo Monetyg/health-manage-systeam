@@ -10,13 +10,24 @@ export default function Admin() {
   const [list, setList] = useState<any[]>([]);
   const [f, setF] = useState({ username: "", password: "" });
   const [msg, setMsg] = useState("");
+  const [locked, setLocked] = useState(false);
+  const [pwd, setPwd] = useState("");
 
-  /** 一级单人使用，打开即用，无需登录 */
+  /** 一级单人使用：生产环境需密码门，本机开发直接进 */
   async function load() {
     const r = await fetch("/api/admin/l2");
+    if (r.status === 401 || r.status === 403) { setLocked(true); return; }
     if (r.ok) setList(await r.json());
   }
   useEffect(() => { load(); }, []);
+
+  /** 密码门解锁 */
+  async function unlock(e?: React.FormEvent) {
+    e?.preventDefault();
+    const r = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pwd }) });
+    if (r.ok) { setLocked(false); setPwd(""); load(); }
+    else setMsg("密码错误");
+  }
 
   async function create() {
     const r = await fetch("/api/admin/l2", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
@@ -46,6 +57,16 @@ export default function Admin() {
       <style>{`input::placeholder{color:#8a9cc5 !important;opacity:1 !important;}input{color:#111 !important;-webkit-text-fill-color:#111;}`}</style>
       <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <h1 style={{ textAlign: "center", color: BLUE, fontWeight: 800, fontSize: 22 }}>一级管理后台</h1>
+        {locked ? (
+          <section style={card}>
+            <div style={{ fontWeight: 800, marginBottom: 12 }}>请输入一级密码</div>
+            <form onSubmit={unlock} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input style={input} placeholder="一级密码" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
+              <button type="submit" style={{ borderRadius: 12, background: BLUE, color: "#fff", padding: 14, fontWeight: 700, border: "none", fontSize: 16 }}>解锁</button>
+            </form>
+          </section>
+        ) : (
+        <>
         <section style={card}>
           <div style={{ fontWeight: 800, marginBottom: 12 }}>发放二级账号</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -87,6 +108,8 @@ export default function Admin() {
           ))}
           {list.length === 0 && <div style={{ color: "#7a8bb0" }}>暂无二级账号</div>}
         </section>
+        </>
+        )}
         {msg && <div style={{ textAlign: "center", color: BLUE }}>{msg}</div>}
       </div>
     </main>
