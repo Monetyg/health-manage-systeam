@@ -62,9 +62,9 @@ export default function CertPreview(p: Props) {
         ))}
       </div>
       {/* 二维码+编号 */}
-      <div style={{ flexShrink: 0, textAlign: "center", border: "2px solid #111", borderRadius: 12, padding: "10px 10px 8px", background: "#fff" }}>
+      <div style={{ flexShrink: 0, textAlign: "center", border: "2px solid #111", borderRadius: 12, padding: "12px 10px 10px", background: "#fff" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {p.qr && <img src={p.qr} alt="qr" style={{ width: 96, height: 96, margin: "0 auto" }} />}
+        {p.qr && <img src={p.qr} alt="qr" style={{ width: 150, height: 150, margin: "0 auto", display: "block" }} />}
       </div>
     </div>
   );
