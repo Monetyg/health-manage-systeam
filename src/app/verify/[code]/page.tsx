@@ -14,6 +14,10 @@ export default async function Verify({ params }: { params: Promise<{ code: strin
   return (
     <main className="mx-auto max-w-md p-4 space-y-2">
       <h1 className="text-center text-lg font-bold">广东省食品从业人员健康证明验真</h1>
+      {c.photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={c.photoUrl} alt="持证人照片" style={{ width: 120, height: 160, objectFit: "cover", borderRadius: 8, border: "1px solid #ddd", display: "block", margin: "12px auto" }} />
+      ) : null}
       <p>编号：{c.certNo}</p>
       {c.province ? <p>省份：{c.province}</p> : null}
       <p>姓名：{c.idCardMask ? c.name?.slice(0, 1) + "*" : c.name}</p>
