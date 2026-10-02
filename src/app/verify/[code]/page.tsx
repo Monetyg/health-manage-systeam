@@ -15,7 +15,7 @@ export default async function Verify({ params }: { params: Promise<{ code: strin
     <main className="mx-auto max-w-md p-4 space-y-2">
       <h1 className="text-center text-lg font-bold">广东省食品从业人员健康证明验真</h1>
       <p>编号：{c.certNo}</p>
-      <p>省份：{c.province || "广东省"}</p>
+      {c.province ? <p>省份：{c.province}</p> : null}
       <p>姓名：{c.idCardMask ? c.name?.slice(0, 1) + "*" : c.name}</p>
       <p>性别：{c.gender}</p>
       <p>身份证：{c.idCardMask}</p>

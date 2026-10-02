@@ -18,8 +18,26 @@ function bjDay() {
 }
 
 /**
- * 办证：L1/L2无限制直办；三级需pass且在有效期内.
+ * 解析二维码写入的域名（按优先级）.
+ * @param req 当前请求，用于从代理头还原公网域名
+ * @returns 去掉末尾斜杠的 base URL
  */
+function resolveDomain(req: Request): string {
+  const h = req.headers;
+  const forwardedHost = h.get("x-forwarded-host") || h.get("host") || "";
+  const forwardedProto = (h.get("x-forwarded-proto") || "").split(",")[0].trim();
+  if (forwardedHost && !/localhost|127\.0\.0\.1|192\.168\.|10\./.test(forwardedHost)) {
+    const proto = forwardedProto === "http" ? "http" : "https";
+    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+  const envDomain = (process.env.DOMAIN || "").trim().replace(/\/+$/, "");
+  if (envDomain && !/localhost|127\.0\.0\.1|192\.168\.0\.104/.test(envDomain)) return envDomain;
+  if (forwardedHost) {
+    const proto = forwardedProto || "http";
+    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+  return envDomain || "http://localhost:3000";
+}
 export async function POST(req: Request) {
   await dbConnect();
   const db = getDb();
@@ -60,7 +78,8 @@ export async function POST(req: Request) {
   }
 
   const map = (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc(region.trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
-  const prov = (province || "").trim() || "广东省";
+  const tpl = template === "e" ? "e" : "gd";
+  const prov = tpl === "e" ? "" : ((province || "").trim() || "广东省")
   const unitName = (map?.unitName as string) || region.trim() + "市第一人民医院";
   const code2 = (map?.regionCode as string) || "SZ";
   const day = bjDay().replace(/-/g, "");
@@ -79,7 +98,6 @@ export async function POST(req: Request) {
   }
   const organ = region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
-  const tpl = template === "e" ? "e" : "gd";
   /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
   let certNo = "";
   let ok = false;
@@ -101,7 +119,13 @@ export async function POST(req: Request) {
   }
   if (!ok) return NextResponse.json({ error: "编号冲突，请重试" }, { status: 500 });
 
-  const domain = process.env.DOMAIN || "http://localhost:3000";
-  const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`);
+  const domain = resolveDomain(req);
+  /** 高容错二维码：H 级纠错 + 大尺寸 + 白底黑块，兼容美团/蜂鸟等第三方严格扫码 */
+  const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`, {
+    errorCorrectionLevel: "H",
+    width: 600,
+    margin: 4,
+    color: { dark: "#000000", light: "#ffffff" },
+  });
   return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, from: examDate, to, template: tpl });
 }

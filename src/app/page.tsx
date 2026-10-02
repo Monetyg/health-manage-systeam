@@ -128,7 +128,7 @@ export default function Home() {
     if (!photo) { setErr("请先拍照/上传照片"); return; }
     try {
       setOk("生成中…");
-      const r = await fetch("/api/certs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, photoUrl: photo, template: tpl }) });
+      const r = await fetch("/api/certs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(tpl === "e" ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl } : { ...f, photoUrl: photo, template: tpl }) });
       const j = await r.json();
       setOk("");
       if (r.ok) setRet(j);
