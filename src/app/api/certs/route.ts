@@ -44,8 +44,10 @@ export async function POST(req: Request) {
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
-  if (!name || !checkIdCard(idCard || "") || !region) {
-    return NextResponse.json({ error: "姓名/身份证(18位)/地区必填" }, { status: 400 });
+  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版（无需地区） */
+  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : "gd";
+  if (!name || !checkIdCard(idCard || "") || (tpl !== "lz" && !region)) {
+    return NextResponse.json({ error: tpl === "lz" ? "姓名/身份证(18位)必填" : "姓名/身份证(18位)/地区必填" }, { status: 400 });
   }
   let createdBy = "L1/L2";
   const pass = c.get("pass")?.value;
@@ -77,10 +79,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  const map = (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc(region.trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
-  const tpl = template === "e" ? "e" : "gd";
-  const prov = tpl === "e" ? "" : ((province || "").trim() || "广东省")
-  const unitName = (map?.unitName as string) || region.trim() + "市第一人民医院";
+  const map = tpl === "lz"
+    ? undefined
+    : (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc((region || "").trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
+  const prov = tpl === "gd" ? ((province || "").trim() || "广东省") : "";
+  const unitName = tpl === "lz" ? "兰州新区教育和卫生健康委员会" : ((map?.unitName as string) || region.trim() + "市第一人民医院");
   const code2 = (map?.regionCode as string) || "SZ";
   const day = bjDay().replace(/-/g, "");
   const examDate = bjDay();
@@ -96,22 +99,27 @@ export async function POST(req: Request) {
       age = String(a);
     }
   }
-  const organ = region.trim() + "市疾病预防控制中心";
+  const organ = tpl === "lz" ? "兰州新区教育和卫生健康委员会" : region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
   /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
+  /** 编号：lz 用「年份+6位序号」的纯数字（对照样张），其余用 地区码+日期+4位序号 */
+  const prefix = tpl === "lz" ? day.slice(0, 4) : code2 + day;
+  const seqLen = tpl === "lz" ? 6 : 4;
   let certNo = "";
   let ok = false;
   for (let i = 0; i < 3 && !ok; i++) {
-    const total = (await db.collection(COLL.Cert).where({ certNo: db.RegExp({ regexp: "^" + code2 + day }) }).count()).total ?? 0;
-    certNo = `${code2}${day}${String(total + 1).padStart(4, "0")}`;
+    const total = (await db.collection(COLL.Cert).where({ certNo: db.RegExp({ regexp: "^" + prefix }) }).count()).total ?? 0;
+    certNo = `${prefix}${String(total + 1).padStart(seqLen, "0")}`;
     try {
-      await db.collection(COLL.Cert).add({
+      const doc: Record<string, unknown> = {
         certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-        province: prov, region, unitName, organ, age, template: tpl,
+        province: prov, region: tpl === "lz" ? "兰州新区" : region, unitName, organ, age, template: tpl,
         photoUrl: photoUrl || "", examDate,
         verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
         createdAt: db.serverDate(), updatedAt: db.serverDate(),
-      });
+      };
+      if (tpl === "lz") doc.category = "食品";
+      await db.collection(COLL.Cert).add(doc);
       ok = true;
     } catch {
       ok = false;
@@ -127,5 +135,5 @@ export async function POST(req: Request) {
     margin: 4,
     color: { dark: "#000000", light: "#ffffff" },
   });
-  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, from: examDate, to, template: tpl });
+  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" ? "食品" : undefined, from: examDate, to, template: tpl });
 }

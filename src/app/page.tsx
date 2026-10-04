@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toPng } from "html-to-image";
 import CertPreview from "@/components/CertPreview";
 import CertPreview2 from "@/components/CertPreview2";
+import CertPreview3 from "@/components/CertPreview3";
 
 const BLUE = "#1677ff";
 
@@ -41,8 +42,8 @@ export default function Home() {
   const [authed, setAuthed] = useState(false);
   const [expire, setExpire] = useState("");
   const [f, setF] = useState({ name: "", idCard: "", province: "广东省", region: "深圳" });
-  /** 模板：gd任意地区版 / e直辖市版（直辖市版少填省份） */
-  const [tpl, setTpl] = useState<"gd" | "e">("gd");
+  /** 模板：gd任意地区版 / e直辖市版（少填省份） / lz兰州新区版（只填姓名+身份证+照片） */
+  const [tpl, setTpl] = useState<"gd" | "e" | "lz">("gd");
   const [photo, setPhoto] = useState("");
   const [upMsg, setUpMsg] = useState("");
   const [ret, setRet] = useState<any>(null);
@@ -128,7 +129,12 @@ export default function Home() {
     if (!photo) { setErr("请先拍照/上传照片"); return; }
     try {
       setOk("生成中…");
-      const r = await fetch("/api/certs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(tpl === "e" ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl } : { ...f, photoUrl: photo, template: tpl }) });
+      const payload = tpl === "lz"
+        ? { name: f.name, idCard: f.idCard, photoUrl: photo, template: tpl }
+        : tpl === "e"
+          ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl }
+          : { ...f, photoUrl: photo, template: tpl };
+      const r = await fetch("/api/certs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const j = await r.json();
       setOk("");
       if (r.ok) setRet(j);
@@ -192,9 +198,9 @@ export default function Home() {
           <section style={card}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>填写信息</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              {(["gd", "e"] as const).map((t) => (
-                <button key={t} onClick={() => setTpl(t)} style={{ flex: 1, borderRadius: 10, padding: 10, fontWeight: 700, border: tpl === t ? `2px solid ${BLUE}` : "1px solid #d0ddf5", background: tpl === t ? "#e8f1ff" : "#fff", color: tpl === t ? BLUE : "#7a8bb0" }}>
-                  {t === "gd" ? "任意地区版" : "直辖市版"}
+              {(["gd", "e", "lz"] as const).map((t) => (
+                <button key={t} onClick={() => setTpl(t)} style={{ flex: 1, borderRadius: 10, padding: "10px 4px", fontSize: 13, fontWeight: 700, border: tpl === t ? `2px solid ${BLUE}` : "1px solid #d0ddf5", background: tpl === t ? "#e8f1ff" : "#fff", color: tpl === t ? BLUE : "#7a8bb0" }}>
+                  {t === "gd" ? "任意地区版" : t === "e" ? "直辖市版" : "兰州新区版"}
                 </button>
               ))}
             </div>
@@ -202,7 +208,7 @@ export default function Home() {
               <input style={input} placeholder="姓名" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
               <input style={input} placeholder="身份证号（18位）" maxLength={18} inputMode="numeric" value={f.idCard} onChange={(e) => setF({ ...f, idCard: e.target.value })} />
               {tpl === "gd" && <input style={input} placeholder="省份（如广东省）" value={f.province} onChange={(e) => setF({ ...f, province: e.target.value })} />}
-              <input style={input} placeholder={tpl === "e" ? "直辖市（如北京）" : "地区（如深圳）"} value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />
+              {tpl !== "lz" && <input style={input} placeholder={tpl === "e" ? "直辖市（如北京）" : "地区（如深圳）"} value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />}
               <label style={{ ...btn, textAlign: "center", background: "#fff", color: BLUE, border: `2px dashed ${BLUE}`, display: "block" }}>
                 {photo ? "重新选择照片" : "从相册选择照片"}
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
@@ -221,7 +227,9 @@ export default function Home() {
         {/* 步骤3：白底模板 */}
         {ret?.certNo && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {ret.template === "e" ? (
+            {ret.template === "lz" ? (
+              <CertPreview3 certNo={ret.certNo} name={f.name} idCard={f.idCard} category={ret.category || "食品"} organ={ret.organ} from={ret.from} to={ret.to} photo={photo} qr={ret.qr} />
+            ) : ret.template === "e" ? (
               <CertPreview2 certNo={ret.certNo} name={f.name} gender={ret.gender} age={ret.age} category="食品生产经营" organ={ret.organ} from={ret.from} to={ret.to} photo={photo} qr={ret.qr} />
             ) : (
               <CertPreview name={f.name} gender={ret.gender} mask={ret.mask} province={ret.province || f.province} unit={ret.unitName} date={new Date().toISOString()} photo={photo} qr={ret.qr} certNo={ret.certNo} />
