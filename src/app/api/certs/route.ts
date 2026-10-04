@@ -44,10 +44,10 @@ export async function POST(req: Request) {
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
-  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版（后两者无需地区） */
-  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : "gd";
+  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版（后三者无需地区） */
+  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : "gd";
   /** 无需填地区的模板 */
-  const noRegion = tpl === "lz" || tpl === "hz";
+  const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs";
   if (!name || !checkIdCard(idCard || "") || (!noRegion && !region)) {
     return NextResponse.json({ error: noRegion ? "姓名/身份证(18位)必填" : "姓名/身份证(18位)/地区必填" }, { status: 400 });
   }
@@ -85,8 +85,14 @@ export async function POST(req: Request) {
     ? undefined
     : (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc((region || "").trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
   const prov = tpl === "gd" ? ((province || "").trim() || "广东省") : "";
-  /** 发证机构：合格证版与兰州版固定，其余按地区映射 */
-  const fixedOrgan = tpl === "hz" ? "深圳市疾病预防控制中心" : tpl === "lz" ? "兰州新区教育和卫生健康委员会" : "";
+  /** 发证机构：合格证版/佛山版/兰州版固定，其余按地区映射 */
+  const fixedOrgan = tpl === "hz"
+    ? "深圳市疾病预防控制中心"
+    : tpl === "fs"
+      ? "佛山市疾病预防控制中心"
+      : tpl === "lz"
+        ? "兰州新区教育和卫生健康委员会"
+        : "";
   const unitName = fixedOrgan || ((map?.unitName as string) || region.trim() + "市第一人民医院");
   const code2 = (map?.regionCode as string) || "SZ";
   const day = bjDay().replace(/-/g, "");
@@ -106,11 +112,11 @@ export async function POST(req: Request) {
   const organ = fixedOrgan || region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
   /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
-  /** 编号：lz 用「年份+6位序号」，hz 用「年月日+4位序号」（12位纯数字，对照样张），其余用 地区码+日期+4位序号 */
-  const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" ? day : code2 + day;
-  const seqLen = tpl === "lz" ? 6 : 4;
-  /** hz 编号为纯数字，需精确匹配长度，避免与其它模板编号互相计数 */
-  const countRe = tpl === "hz" ? "^" + prefix + "\\d{4}$" : "^" + prefix;
+  /** 编号：lz 用「年份+6位序号」，hz 用「年月日+4位序号」，fs 用「年月日+5位序号」（对照样张），其余用 地区码+日期+4位序号 */
+  const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
+  const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
+  /** hz/fs 编号为纯数字，需精确匹配长度，避免与其它模板编号互相计数 */
+  const countRe = tpl === "hz" ? "^" + prefix + "\\d{4}$" : tpl === "fs" ? "^" + prefix + "\\d{5}$" : "^" + prefix;
   let certNo = "";
   let ok = false;
   for (let i = 0; i < 3 && !ok; i++) {
@@ -119,12 +125,12 @@ export async function POST(req: Request) {
     try {
       const doc: Record<string, unknown> = {
         certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-        province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : "深圳") : region, unitName, organ, age, template: tpl,
+        province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : "深圳") : region, unitName, organ, age, template: tpl,
         photoUrl: photoUrl || "", examDate,
         verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
         createdAt: db.serverDate(), updatedAt: db.serverDate(),
       };
-      if (tpl === "lz") doc.category = "食品";
+      if (tpl === "lz" || tpl === "fs") doc.category = "食品";
       await db.collection(COLL.Cert).add(doc);
       ok = true;
     } catch {
@@ -141,5 +147,5 @@ export async function POST(req: Request) {
     margin: 4,
     color: { dark: "#000000", light: "#ffffff" },
   });
-  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" ? "食品" : undefined, from: examDate, to, template: tpl });
+  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" ? "食品" : undefined, from: examDate, to, template: tpl });
 }
