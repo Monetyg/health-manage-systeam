@@ -197,11 +197,11 @@ export default function CertPreview4(p: Props) {
           <div style={rowStyle}>发证机构：{org}</div>
         </div>
 
-        {/* 红章：压在信息栏与照片交界处（用 right 定位，宽度变化时始终贴住照片） */}
+        {/* 红章：右边缘留到照片左侧之外，避免被照片压住（right 值按实测照片位置定，改小会被照片遮挡） */}
         <div
           style={{
             position: "absolute",
-            right: 58,
+            right: 95,
             top: 40,
             width: 94,
             height: 94,
