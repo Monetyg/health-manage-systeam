@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import QRCode from "qrcode";
-import { dbConnect } from "@/lib/db";
-import { getDb } from "@/lib/cloudbase";
-import { COLL, type UserDoc, type RegionUnitDoc } from "@/lib/models";
+import { publicDomain } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
-
-/** 转义正则特殊字符：地区名含.*等符号时防止查错库 */
-function esc(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+import { createCert, findRegionUnit, findUserById, nextCertSeq } from "@/lib/repo";
 
 /** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
 function bjDay() {
@@ -18,7 +12,8 @@ function bjDay() {
 }
 
 /**
- * 解析二维码写入的域名（按优先级）.
+ * 解析二维码写入的域名（按优先级）。
+ * Nginx 必须透传 X-Forwarded-Host / X-Forwarded-Proto，否则取不到公网域名时才用 .env 里的 DOMAIN 兜底。
  * @param req 当前请求，用于从代理头还原公网域名
  * @returns 去掉末尾斜杠的 base URL
  */
@@ -30,17 +25,23 @@ function resolveDomain(req: Request): string {
     const proto = forwardedProto === "http" ? "http" : "https";
     return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
   }
-  const envDomain = (process.env.DOMAIN || "").trim().replace(/\/+$/, "");
+  const envDomain = publicDomain();
   if (envDomain && !/localhost|127\.0\.0\.1|192\.168\.0\.104/.test(envDomain)) return envDomain;
   if (forwardedHost) {
     const proto = forwardedProto || "http";
     return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
   }
-  return envDomain || "http://localhost:3000";
+  return envDomain;
 }
+
+/**
+ * 办证：生成编号 + 落库 + 返回二维码。
+ * 编号规则（与原来一致）：lz「年份+6位序号」，hz「年月日+4位序号」，
+ * fs「年月日+5位序号」，其余「地区码+日期+4位序号」。
+ * 取号方式从「CloudBase 正则计数+冲突重试」改为 MySQL cert_seqs 原子自增，
+ * 同一前缀多并发同时办证也不会撞号。
+ */
 export async function POST(req: Request) {
-  await dbConnect();
-  const db = getDb();
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
@@ -57,16 +58,11 @@ export async function POST(req: Request) {
   if (token) {
     try {
       const me = await readToken<{ uid: string; username: string }>(token);
-      let u: UserDoc | null = null;
-      try {
-        u = (await db.collection(COLL.User).doc(String(me.uid)).get()).data[0] as unknown as UserDoc | undefined ?? null;
-      } catch {
-        u = null;
-      }
+      const u = await findUserById(me.uid);
       if (!u || u.status === "disabled") {
         return NextResponse.json({ error: "账号已禁用", disabled: true }, { status: 403 });
       }
-      createdBy = u.username as string;
+      createdBy = u.username;
     } catch {
       return NextResponse.json({ error: "登录已过期，请重新登录" }, { status: 401 });
     }
@@ -81,9 +77,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
 
-  const map = noRegion
-    ? undefined
-    : (await db.collection(COLL.RegionUnit).where({ regionKeyword: db.RegExp({ regexp: esc((region || "").trim()), options: "i" }) }).limit(1).get()).data[0] as unknown as RegionUnitDoc | undefined;
+  const map = noRegion ? null : await findRegionUnit(region || "");
   const prov = tpl === "gd" ? ((province || "").trim() || "广东省") : "";
   /** 发证机构：合格证版/佛山版/兰州版固定，其余按地区映射 */
   const fixedOrgan = tpl === "hz"
@@ -93,8 +87,8 @@ export async function POST(req: Request) {
       : tpl === "lz"
         ? "兰州新区教育和卫生健康委员会"
         : "";
-  const unitName = fixedOrgan || ((map?.unitName as string) || region.trim() + "市第一人民医院");
-  const code2 = (map?.regionCode as string) || "SZ";
+  const unitName = fixedOrgan || (map?.unitName || region.trim() + "市第一人民医院");
+  const code2 = map?.regionCode || "SZ";
   const day = bjDay().replace(/-/g, "");
   const examDate = bjDay();
   /** 年龄：身份证7-14位出生日期算周岁，算不出填-- */
@@ -111,33 +105,20 @@ export async function POST(req: Request) {
   }
   const organ = fixedOrgan || region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
-  /** 并发两人同时办证会撞号：撞了就重试，最多3次 */
-  /** 编号：lz 用「年份+6位序号」，hz 用「年月日+4位序号」，fs 用「年月日+5位序号」（对照样张），其余用 地区码+日期+4位序号 */
+  /** 编号前缀与序号长度 */
   const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
   const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
-  /** hz/fs 编号为纯数字，需精确匹配长度，避免与其它模板编号互相计数 */
-  const countRe = tpl === "hz" ? "^" + prefix + "\\d{4}$" : tpl === "fs" ? "^" + prefix + "\\d{5}$" : "^" + prefix;
-  let certNo = "";
-  let ok = false;
-  for (let i = 0; i < 3 && !ok; i++) {
-    const total = (await db.collection(COLL.Cert).where({ certNo: db.RegExp({ regexp: countRe }) }).count()).total ?? 0;
-    certNo = `${prefix}${String(total + 1).padStart(seqLen, "0")}`;
-    try {
-      const doc: Record<string, unknown> = {
-        certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-        province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : "深圳") : region, unitName, organ, age, template: tpl,
-        photoUrl: photoUrl || "", examDate,
-        verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
-        createdAt: db.serverDate(), updatedAt: db.serverDate(),
-      };
-      if (tpl === "lz" || tpl === "fs") doc.category = "食品";
-      await db.collection(COLL.Cert).add(doc);
-      ok = true;
-    } catch {
-      ok = false;
-    }
-  }
-  if (!ok) return NextResponse.json({ error: "编号冲突，请重试" }, { status: 500 });
+  const seq = await nextCertSeq(prefix);
+  const certNo = `${prefix}${String(seq).padStart(seqLen, "0")}`;
+
+  await createCert({
+    certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
+    province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : "深圳") : region,
+    unitName, organ, age, template: tpl,
+    category: tpl === "lz" || tpl === "fs" ? "食品" : null,
+    photoUrl: photoUrl || "", examDate,
+    verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
+  });
 
   const domain = resolveDomain(req);
   /** 高容错二维码：H 级纠错 + 大尺寸 + 白底黑块，兼容美团/蜂鸟等第三方严格扫码 */

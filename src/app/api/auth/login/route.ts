@@ -1,25 +1,23 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/db";
-import { getDb } from "@/lib/cloudbase";
-import { COLL, type UserDoc } from "@/lib/models";
+import { findUserByUsername } from "@/lib/repo";
 import { verifyPwd, signUser } from "@/lib/auth";
 
 /**
- * L1/L2 登录.
+ * L1/L2 登录。
  */
 export async function POST(req: Request) {
   try {
     await dbConnect();
     const { username, password } = await req.json();
-    const db = getDb();
-    const u = (await db.collection(COLL.User).where({ username: String(username || "").trim() }).limit(1).get()).data[0] as unknown as UserDoc | undefined ?? null;
+    const u = await findUserByUsername(String(username || ""));
     if (!u || !(await verifyPwd(password, u.passwordHash))) {
       return NextResponse.json({ error: "账号或密码错误" }, { status: 401 });
     }
     if (u.status === "disabled") {
       return NextResponse.json({ error: "账号已禁用", disabled: true }, { status: 403 });
     }
-    const token = await signUser({ uid: String(u._id), role: u.role, username: u.username });
+    const token = await signUser({ uid: String(u.id), role: u.role, username: u.username });
     const res = NextResponse.json({ role: u.role, username: u.username });
     res.cookies.set("token", token, { httpOnly: true, maxAge: 7 * 86400, path: "/" });
     return res;

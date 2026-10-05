@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import COS from "cos-nodejs-sdk-v5";
+import { cosConfig, uploadDir } from "@/lib/config";
 
 /**
- * 图片上传：配了COS环境变量就直传COS（生产），没配就落本机public/uploads（本机开发）。
+ * 图片上传：配了COS环境变量就直传COS（生产），没配就落服务本地 UPLOAD_DIR。
  * 返回的URL前端直接用，不用改别的代码。
  */
 export async function POST(req: Request) {
@@ -16,15 +17,15 @@ export async function POST(req: Request) {
     const buf = Buffer.from(await f.arrayBuffer());
     const key = `photos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
 
-    const { COS_SECRET_ID, COS_SECRET_KEY, COS_BUCKET, COS_REGION } = process.env;
-    if (COS_SECRET_ID && COS_SECRET_KEY && COS_BUCKET && COS_REGION) {
-      const cos = new COS({ SecretId: COS_SECRET_ID, SecretKey: COS_SECRET_KEY });
-      await cos.putObject({ Bucket: COS_BUCKET, Region: COS_REGION, Key: key, Body: buf, ContentType: "image/jpeg", ACL: "public-read" });
-      return NextResponse.json({ url: `https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/${key}` });
+    const cos = cosConfig();
+    if (cos) {
+      const sdk = new COS({ SecretId: cos.secretId, SecretKey: cos.secretKey });
+      await sdk.putObject({ Bucket: cos.bucket, Region: cos.region, Key: key, Body: buf, ContentType: "image/jpeg", ACL: "public-read" });
+      return NextResponse.json({ url: `https://${cos.bucket}.cos.${cos.region}.myqcloud.com/${key}` });
     }
 
-    // 本机开发兜底：落盘（云托管生产环境勿用，容器重启会丢）
-    const dir = path.join(process.cwd(), "public", "uploads");
+    // 未配COS：落本地（部署时把 UPLOAD_DIR 指到项目外的固定目录，避免重新发布被覆盖）
+    const dir = uploadDir();
     await mkdir(dir, { recursive: true });
     const name = key.split("/").pop()!;
     await writeFile(path.join(dir, name), buf);

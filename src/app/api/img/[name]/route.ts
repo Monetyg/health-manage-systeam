@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { uploadDir } from "@/lib/config";
 
 const TYPES: Record<string, string> = {
   jpg: "image/jpeg",
@@ -10,7 +11,7 @@ const TYPES: Record<string, string> = {
 };
 
 /**
- * 读盘直出上传图片：每次请求都读磁盘，不受 next start 静态快照影响，
+ * 读盘直出上传图片：从 UPLOAD_DIR 读文件，不受 next start 静态快照影响，
  * 服务运行中新上传的照片也能立刻访问。
  */
 export async function GET(_: Request, { params }: { params: Promise<{ name: string }> }) {
@@ -19,7 +20,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ name: stri
     return NextResponse.json({ error: "非法文件名" }, { status: 400 });
   }
   try {
-    const buf = await readFile(path.join(process.cwd(), "public", "uploads", name));
+    const buf = await readFile(path.join(uploadDir(), name));
     const ext = name.split(".").pop()!.toLowerCase();
     return new NextResponse(new Uint8Array(buf), {
       headers: { "Content-Type": TYPES[ext] || "image/jpeg", "Cache-Control": "public, max-age=31536000" },

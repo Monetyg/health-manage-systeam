@@ -1,27 +1,25 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/db";
-import { getDb } from "@/lib/cloudbase";
-import { COLL, type CardKeyDoc } from "@/lib/models";
+import { findCardKeyByCode, markCardKeyExpired, markCardKeyUsed } from "@/lib/repo";
 import { signPass } from "@/lib/auth";
 import { durationMs } from "@/lib/biz";
 
 /**
- * 三级卡密登录：兑换有效期窗口.
+ * 三级卡密登录：兑换有效期窗口。
  */
 export async function POST(req: Request) {
   await dbConnect();
   const { code } = await req.json();
-  const db = getDb();
-  const k = (await db.collection(COLL.CardKey).where({ code: String(code || "").trim().toUpperCase() }).limit(1).get()).data[0] as unknown as CardKeyDoc | undefined ?? null;
+  const k = await findCardKeyByCode(String(code || ""));
   if (!k) return NextResponse.json({ error: "卡密不存在" }, { status: 404 });
   if (k.status === "revoked") return NextResponse.json({ error: "卡密已作废" }, { status: 403 });
-  let expireAt = k.expireAt ? new Date(k.expireAt as unknown as string) : null;
+  let expireAt = k.expireAt ? new Date(k.expireAt) : null;
   if (k.status === "unused") {
     expireAt = new Date(Date.now() + durationMs(k.type));
-    await db.collection(COLL.CardKey).doc(String(k._id)).update({ status: "used", usedAt: db.serverDate(), expireAt, updatedAt: db.serverDate() });
+    await markCardKeyUsed(k.id, expireAt);
   }
   if (expireAt && expireAt < new Date()) {
-    await db.collection(COLL.CardKey).doc(String(k._id)).update({ status: "expired", updatedAt: db.serverDate() });
+    await markCardKeyExpired(k.id);
     return NextResponse.json({ error: "卡密已过期" }, { status: 403 });
   }
   const token = await signPass({ kind: "pass", code: k.code, by: k.createdByL2 }, expireAt as unknown as Date);

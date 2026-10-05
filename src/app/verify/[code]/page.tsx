@@ -1,16 +1,13 @@
-import { dbConnect } from "@/lib/db";
-import { getDb } from "@/lib/cloudbase";
-import { COLL } from "@/lib/models";
+import { findCertByCertNo } from "@/lib/repo";
 
 /**
- * 公开验真页：3天内有效.
+ * 公开验真页：3天内有效。
  */
 export default async function Verify({ params }: { params: Promise<{ code: string }> }) {
-  await dbConnect();
   const { code } = await params;
-  const c = (await getDb().collection(COLL.Cert).where({ certNo: code }).limit(1).get()).data[0] as any;
+  const c = await findCertByCertNo(code);
   if (!c) return <main className="p-8 text-center">查无此证：{code}</main>;
-  const expired = new Date(c.verifyExpireAt) < new Date();
+  const expired = new Date(c.verifyExpireAt as unknown as string) < new Date();
   /** 合格证版：发证日期 +1 年 -1 天 为到期日期 */
   const toDate = (() => {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(c.examDate || ""));
