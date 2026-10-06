@@ -26,7 +26,7 @@ function resolveDomain(req: Request): string {
     return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
   }
   const envDomain = publicDomain();
-  if (envDomain && !/localhost|127\.0\.0\.1|192\.168\.0\.104/.test(envDomain)) return envDomain;
+  if (envDomain && !/localhost|127\.0\.0\.1|192\.168\.|10\./.test(envDomain)) return envDomain;
   if (forwardedHost) {
     const proto = forwardedProto || "http";
     return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
