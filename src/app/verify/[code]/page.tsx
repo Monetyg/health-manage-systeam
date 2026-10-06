@@ -18,13 +18,15 @@ export default async function Verify({ params }: { params: Promise<{ code: strin
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   })();
   /** 用发证机构还是体检单位的分支 */
-  const useOrgan = c.template === "lz" || c.template === "hz" || c.template === "fs";
+  const useOrgan = c.template === "lz" || c.template === "hz" || c.template === "fs" || c.template === "sl";
   const isHz = c.template === "hz";
   const isFs = c.template === "fs";
+  const isSl = c.template === "sl";
+  const isFoodCert = isFs || isSl;
   return (
     <main className="mx-auto max-w-md p-4 space-y-2">
       <h1 className="text-center text-lg font-bold">
-        {isFs ? "食品从业人员健康体检合格证验真" : isHz ? "从业人员健康体检卫生培训合格证验真" : c.template === "lz" ? "兰州新区从业人员电子健康证验真" : c.template === "e" ? "从业人员健康证明验真" : "广东省食品从业人员健康证明验真"}
+        {isSl ? "从业人员预防性健康检查合格证明验真" : isFs ? "食品从业人员健康体检合格证验真" : isHz ? "从业人员健康体检卫生培训合格证验真" : c.template === "lz" ? "兰州新区从业人员电子健康证验真" : c.template === "e" ? "从业人员健康证明验真" : "广东省食品从业人员健康证明验真"}
       </h1>
       {c.photoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -36,11 +38,11 @@ export default async function Verify({ params }: { params: Promise<{ code: strin
       <p>性别：{c.gender}</p>
       {c.age ? <p>年龄：{c.age}</p> : null}
       <p>身份证：{c.idCardMask}</p>
-      {isFs ? <p>从业类别：食品</p> : null}
-      {isHz || isFs ? <p>检查结果：合格</p> : null}
+      {isFoodCert ? <p>从业类别：食品</p> : null}
+      {isHz || isFoodCert ? <p>检查结果：合格</p> : null}
       <p>{useOrgan ? "发证机构" : "单位"}：{c.unitName}</p>
-      <p>{isFs ? "发证日期" : "体检日期"}：{c.examDate}</p>
-      {isFs ? <p>有效期限：一年</p> : null}
+      <p>{isFoodCert ? "发证日期" : "体检日期"}：{c.examDate}</p>
+      {isFoodCert ? <p>有效期限：一年</p> : null}
       {isHz ? <p>到期日期：{toDate}</p> : null}
       <p className={expired ? "text-red-600 font-bold" : "text-green-600 font-bold"}>{expired ? "已过期（超过3天）" : "有效期内"}</p>
     </main>

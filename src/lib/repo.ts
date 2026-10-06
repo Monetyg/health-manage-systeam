@@ -141,6 +141,15 @@ export async function createCert(row: Omit<CertRow, "id" | "createdAt" | "update
   await Cert.create(row);
 }
 
+/**
+ * 健康证：按编号 upsert（编号取自身份证号的模板同一人重复办证时直接覆盖，
+ * 避免唯一键冲突导致办不出来）。
+ */
+export async function upsertCert(row: Omit<CertRow, "id" | "createdAt" | "updatedAt">): Promise<void> {
+  const { Cert } = getModels();
+  await Cert.upsert(row);
+}
+
 /** 健康证：验真页按编号查 */
 export async function findCertByCertNo(certNo: string): Promise<CertRow | null> {
   const { Cert } = getModels();

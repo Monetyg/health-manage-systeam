@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { publicDomain } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
-import { createCert, findRegionUnit, findUserById, nextCertSeq } from "@/lib/repo";
+import { createCert, findRegionUnit, findUserById, nextCertSeq, upsertCert } from "@/lib/repo";
 
 /** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
 function bjDay() {
@@ -45,10 +45,10 @@ export async function POST(req: Request) {
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
-  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版（后三者无需地区） */
-  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : "gd";
+  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版 / sl 小鸟商洛版（后四者无需地区） */
+  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : template === "sl" ? "sl" : "gd";
   /** 无需填地区的模板 */
-  const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs";
+  const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl";
   if (!name || !checkIdCard(idCard || "") || (!noRegion && !region)) {
     return NextResponse.json({ error: noRegion ? "姓名/身份证(18位)必填" : "姓名/身份证(18位)/地区必填" }, { status: 400 });
   }
@@ -79,14 +79,16 @@ export async function POST(req: Request) {
 
   const map = noRegion ? null : await findRegionUnit(region || "");
   const prov = tpl === "gd" ? ((province || "").trim() || "广东省") : "";
-  /** 发证机构：合格证版/佛山版/兰州版固定，其余按地区映射 */
+  /** 发证机构：合格证版/佛山版/兰州版/商洛版固定，其余按地区映射 */
   const fixedOrgan = tpl === "hz"
     ? "深圳市疾病预防控制中心"
     : tpl === "fs"
       ? "佛山市疾病预防控制中心"
       : tpl === "lz"
         ? "兰州新区教育和卫生健康委员会"
-        : "";
+        : tpl === "sl"
+          ? "商洛市疾病预防控制中心"
+          : "";
   const unitName = fixedOrgan || (map?.unitName || region.trim() + "市第一人民医院");
   const code2 = map?.regionCode || "SZ";
   const day = bjDay().replace(/-/g, "");
@@ -105,20 +107,28 @@ export async function POST(req: Request) {
   }
   const organ = fixedOrgan || region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
-  /** 编号前缀与序号长度 */
-  const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
-  const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
-  const seq = await nextCertSeq(prefix);
-  const certNo = `${prefix}${String(seq).padStart(seqLen, "0")}`;
+  /** 商洛版编号直接取身份证号（与样张一致），同一人重复办证时覆盖旧证 */
+  const isSl = tpl === "sl";
+  const certNo = isSl
+    ? idCard
+    : await (async () => {
+        /** 编号前缀与序号长度 */
+        const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
+        const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
+        const seq = await nextCertSeq(prefix);
+        return `${prefix}${String(seq).padStart(seqLen, "0")}`;
+      })();
 
-  await createCert({
+  const row = {
     certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-    province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : "深圳") : region,
+    province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : tpl === "sl" ? "商洛" : "深圳") : region,
     unitName, organ, age, template: tpl,
-    category: tpl === "lz" || tpl === "fs" ? "食品" : null,
+    category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : null,
     photoUrl: photoUrl || "", examDate,
     verifyExpireAt: new Date(Date.now() + 3 * 86400e3), createdBy,
-  });
+  };
+  if (isSl) await upsertCert(row);
+  else await createCert(row);
 
   const domain = resolveDomain(req);
   /** 高容错二维码：H 级纠错 + 大尺寸 + 白底黑块，兼容美团/蜂鸟等第三方严格扫码 */
@@ -128,5 +138,5 @@ export async function POST(req: Request) {
     margin: 4,
     color: { dark: "#000000", light: "#ffffff" },
   });
-  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" ? "食品" : undefined, from: examDate, to, template: tpl });
+  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : undefined, from: examDate, to, template: tpl });
 }
