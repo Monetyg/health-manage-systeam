@@ -1,5 +1,42 @@
-# 宝塔面板 → 网站 → 你的站点 → 配置文件（server 段内替换 location /）
+# 宝塔 → 网站 → 你的站点 → 配置文件（server 段内使用）
 # 前提：反向代理目标是 PM2 跑起来的 Next.js（默认 127.0.0.1:3000，与 .env 里 PORT 一致）
+#
+# ⚠️ 宝塔默认模板会给 Next.js 埋三个坑，本文件全部规避：
+#   1. 全局 proxy_cache（/www/server/nginx/conf/proxy.conf）默认缓存整页 → 更新不生效 + 用户串号
+#   2. 正则 location ~ .*\.(js|css)?$ 优先级高于 location / → /_next/ 静态资源全 404 → 页面卡死
+#   3. 正则 location ~ .*\.(jpg|png|...)$ 同上 → /api/img/*.jpg 等图片 404 → 照片加载失败
+# 解决办法：用 ^~ 前缀 location（优先级高于正则）把 /_next/ 和 /api/ 显式交给反代。
+
+# 1) /api/ 全部走反代（含 /api/img/*.jpg，避免被图片正则拦截）
+location ^~ /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache off;                 # 关闭宝塔全局缓存
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    client_max_body_size 20m;        # 允许上传较大的照片
+    proxy_connect_timeout 60s;
+    proxy_read_timeout 120s;
+}
+
+# 2) Next.js 静态资源走反代（避免被 .js/.css 正则拦截）
+location ^~ /_next/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_cache off;
+}
+
+# 3) 其余请求统一反代
 location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
@@ -11,6 +48,10 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
+    # 关闭宝塔全局 proxy_cache（动态站点必须）
+    proxy_cache off;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
     proxy_connect_timeout 60s;
     proxy_read_timeout 120s;
 }
