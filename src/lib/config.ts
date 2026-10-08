@@ -49,6 +49,15 @@ export function appPort(): number {
 }
 
 /**
+ * 二维码里写入的验真地址（验真子域名）。
+ * 生产必须配 VERIFY_DOMAIN；本地缺省时退回本机地址方便联调。
+ */
+export function verifyDomain(): string {
+  const d = optional("VERIFY_DOMAIN").replace(/\/+$/, "");
+  return d || `http://localhost:${appPort()}`;
+}
+
+/**
  * 二维码里写入的公网地址。
  * 正常情况由 Nginx 透传的 X-Forwarded-Host 还原，这里只是兜底。
  */

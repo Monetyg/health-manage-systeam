@@ -62,6 +62,8 @@ export interface RegionUnitRow {
 export interface CertRow {
   id: number;
   certNo: string;
+  /** 公开验真随机Token（历史旧证为空） */
+  verifyToken: string | null;
   name: string;
   idCardMask: string;
   gender: string;
@@ -141,6 +143,7 @@ function defineCert(sequelize: ReturnType<typeof getSequelize>) {
     {
       id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
       certNo: { type: DataTypes.STRING(32), allowNull: false, unique: true },
+      verifyToken: { type: DataTypes.STRING(64), allowNull: true, unique: true },
       name: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "" },
       idCardMask: { type: DataTypes.STRING(32), allowNull: false, defaultValue: "" },
       gender: { type: DataTypes.STRING(4), allowNull: false, defaultValue: "" },

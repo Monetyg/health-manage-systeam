@@ -156,3 +156,12 @@ export async function findCertByCertNo(certNo: string): Promise<CertRow | null> 
   const row = await Cert.findOne({ where: { certNo } });
   return row ? plain<CertRow>(row) : null;
 }
+
+/** 健康证：公开验真按 token 查（只读，token 无匹配返回 null） */
+export async function findCertByToken(token: string): Promise<CertRow | null> {
+  const t = (token || "").trim();
+  if (!/^[0-9a-f]{64}$/i.test(t)) return null;
+  const { Cert } = getModels();
+  const row = await Cert.findOne({ where: { verifyToken: t.toLowerCase() } });
+  return row ? plain<CertRow>(row) : null;
+}

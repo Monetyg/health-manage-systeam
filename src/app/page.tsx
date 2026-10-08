@@ -245,7 +245,7 @@ export default function Home() {
             )}
             <button style={{ ...btn }} onClick={download}>下载图片存相册</button>
             {dlMsg && <div style={{ textAlign: "center", fontSize: 13, color: BLUE }}>{dlMsg}</div>}
-            <a style={{ ...btn, textAlign: "center", textDecoration: "none", display: "block", background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} href={`/verify/${ret.certNo}`}>打开验真页</a>
+            <a style={{ ...btn, textAlign: "center", textDecoration: "none", display: "block", background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} href={ret.verifyUrl || `/v/`}>打开验真页</a>
             <button style={{ ...btn, background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} onClick={() => { setRet(null); setF({ name: "", idCard: "", province: "广东省", region: "深圳" }); setPhoto(""); }}>继续办下一张</button>
           </section>
         )}

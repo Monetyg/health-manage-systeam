@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS `region_units` (
 -- 健康证（原 CloudBase Cert 集合）
 CREATE TABLE IF NOT EXISTS `certs` (
   `id`               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `cert_no`          VARCHAR(32)  NOT NULL COMMENT '证件编号（验真页 key）',
+  `cert_no`          VARCHAR(32)  NOT NULL COMMENT '证件编号（内部编号，商洛版取身份证号）',
+  `verify_token`     VARCHAR(64)  NULL COMMENT '公开验真随机Token（新证必填，历史旧证为空）',
   `name`             VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '持证人姓名',
   `id_card_mask`     VARCHAR(32)  NOT NULL DEFAULT '' COMMENT '脱敏身份证（如 4401********1234）',
   `gender`           VARCHAR(4)   NOT NULL DEFAULT '' COMMENT '男/女',
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS `certs` (
   `updated_at`       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_cert_no` (`cert_no`),
+  UNIQUE KEY `uk_verify_token` (`verify_token`),
   KEY `idx_created` (`created_by`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='健康证';
 

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import crypto from "node:crypto";
 import QRCode from "qrcode";
-import { publicDomain } from "@/lib/config";
+import { verifyDomain } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
-import { createCert, findRegionUnit, findUserById, nextCertSeq, upsertCert } from "@/lib/repo";
+import { createCert, findCertByCertNo, findRegionUnit, findUserById, nextCertSeq, upsertCert } from "@/lib/repo";
 
 /** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
 function bjDay() {
@@ -12,34 +13,10 @@ function bjDay() {
 }
 
 /**
- * 解析二维码写入的域名（按优先级）。
- * Nginx 必须透传 X-Forwarded-Host / X-Forwarded-Proto，否则取不到公网域名时才用 .env 里的 DOMAIN 兜底。
- * @param req 当前请求，用于从代理头还原公网域名
- * @returns 去掉末尾斜杠的 base URL
- */
-function resolveDomain(req: Request): string {
-  const h = req.headers;
-  const forwardedHost = h.get("x-forwarded-host") || h.get("host") || "";
-  const forwardedProto = (h.get("x-forwarded-proto") || "").split(",")[0].trim();
-  if (forwardedHost && !/localhost|127\.0\.0\.1|192\.168\.|10\./.test(forwardedHost)) {
-    const proto = forwardedProto === "http" ? "http" : "https";
-    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
-  }
-  const envDomain = publicDomain();
-  if (envDomain && !/localhost|127\.0\.0\.1|192\.168\.|10\./.test(envDomain)) return envDomain;
-  if (forwardedHost) {
-    const proto = forwardedProto || "http";
-    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
-  }
-  return envDomain;
-}
-
-/**
- * 办证：生成编号 + 落库 + 返回二维码。
- * 编号规则（与原来一致）：lz「年份+6位序号」，hz「年月日+4位序号」，
- * fs「年月日+5位序号」，其余「地区码+日期+4位序号」。
- * 取号方式从「CloudBase 正则计数+冲突重试」改为 MySQL cert_seqs 原子自增，
- * 同一前缀多并发同时办证也不会撞号。
+ * 办证：生成编号 + 随机验真 token + 落库 + 返回指向验真子域名的二维码。
+ * 编号规则：lz「年份+6位序号」，hz「年月日+4位序号」，
+ * fs「年月日+5位序号」，sl 直接取身份证号，其余「地区码+日期+4位序号」。
+ * 取号方式为 MySQL cert_seqs 原子自增，同一前缀多并发同时办证也不会撞号。
  */
 export async function POST(req: Request) {
   const c = await cookies();
@@ -107,20 +84,28 @@ export async function POST(req: Request) {
   }
   const organ = fixedOrgan || region.trim() + "市疾病预防控制中心";
   const to = new Date(new Date(examDate).getTime() + 365 * 86400e3).toISOString().slice(0, 10);
-  /** 商洛版编号直接取身份证号（与样张一致），同一人重复办证时覆盖旧证 */
+  /** 商洛版编号直接取身份证号（与样张一致），同一人重复办证时覆盖旧证并沿用原 token（旧二维码不失效） */
   const isSl = tpl === "sl";
-  const certNo = isSl
-    ? idCard
-    : await (async () => {
-        /** 编号前缀与序号长度 */
-        const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
-        const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
-        const seq = await nextCertSeq(prefix);
-        return `${prefix}${String(seq).padStart(seqLen, "0")}`;
-      })();
+  let certNo: string;
+  let verifyToken: string;
+  if (isSl) {
+    certNo = idCard;
+    const prev = await findCertByCertNo(idCard);
+    verifyToken = prev?.verifyToken || crypto.randomBytes(32).toString("hex");
+  } else {
+    /** 编号前缀与序号长度 */
+    const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
+    const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
+    const seq = await nextCertSeq(prefix);
+    certNo = `${prefix}${String(seq).padStart(seqLen, "0")}`;
+    verifyToken = crypto.randomBytes(32).toString("hex");
+  }
 
   const row = {
-    certNo, name, idCardMask: maskId(idCard), gender: genderOf(idCard),
+    certNo,
+    /** 二维码只携带随机 token：不可预测，不用自增 id / 身份证号 / 证书编号 */
+    verifyToken,
+    name, idCardMask: maskId(idCard), gender: genderOf(idCard),
     province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : tpl === "sl" ? "商洛" : "深圳") : region,
     unitName, organ, age, template: tpl,
     category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : null,
@@ -130,13 +115,15 @@ export async function POST(req: Request) {
   if (isSl) await upsertCert(row);
   else await createCert(row);
 
-  const domain = resolveDomain(req);
+  /** 二维码统一指向验真子域名，token 落库在前：缺 token 直接报错，绝不生成扫了没用的码 */
+  if (!verifyToken) return NextResponse.json({ error: "该健康证缺少验真 Token，无法生成二维码" }, { status: 500 });
+  const verifyUrl = `${verifyDomain()}/v/${verifyToken}`;
   /** 高容错二维码：H 级纠错 + 大尺寸 + 白底黑块，兼容美团/蜂鸟等第三方严格扫码 */
-  const qrDataUrl = await QRCode.toDataURL(`${domain}/verify/${certNo}`, {
+  const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
     errorCorrectionLevel: "H",
     width: 600,
     margin: 4,
     color: { dark: "#000000", light: "#ffffff" },
   });
-  return NextResponse.json({ certNo, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : undefined, from: examDate, to, template: tpl });
+  return NextResponse.json({ certNo, verifyUrl, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : undefined, from: examDate, to, template: tpl });
 }
