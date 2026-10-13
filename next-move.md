@@ -101,11 +101,11 @@ rollback 时能够删除该字段/index
 
 import crypto from "crypto";
 
-const verifyToken = crypto.randomBytes(32).toString("hex");
+const verifyToken = crypto.randomBytes(16).toString("hex");
 
 得到：
 
-64位十六进制字符串
+32位十六进制字符串（2026-10因二维码密度优化由64位缩短，128位随机不可预测，老64位token继续兼容）
 
 要求：
 

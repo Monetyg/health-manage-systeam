@@ -91,14 +91,14 @@ export async function POST(req: Request) {
   if (isSl) {
     certNo = idCard;
     const prev = await findCertByCertNo(idCard);
-    verifyToken = prev?.verifyToken || crypto.randomBytes(32).toString("hex");
+    verifyToken = prev?.verifyToken || crypto.randomBytes(16).toString("hex");
   } else {
     /** 编号前缀与序号长度 */
     const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
     const seqLen = tpl === "lz" ? 6 : tpl === "fs" ? 5 : 4;
     const seq = await nextCertSeq(prefix);
     certNo = `${prefix}${String(seq).padStart(seqLen, "0")}`;
-    verifyToken = crypto.randomBytes(32).toString("hex");
+    verifyToken = crypto.randomBytes(16).toString("hex");
   }
 
   const row = {
