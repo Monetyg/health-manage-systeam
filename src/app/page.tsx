@@ -7,6 +7,7 @@ import CertPreview3 from "@/components/CertPreview3";
 import CertPreview4 from "@/components/CertPreview4";
 import CertPreview5 from "@/components/CertPreview5";
 import CertPreview6 from "@/components/CertPreview6";
+import CertPreview7 from "@/components/CertPreview7";
 
 const BLUE = "#1677ff";
 
@@ -46,7 +47,7 @@ export default function Home() {
   const [expire, setExpire] = useState("");
   const [f, setF] = useState({ name: "", idCard: "", province: "广东省", region: "深圳" });
   /** 模板：gd任意地区版 / e直辖市版（少填省份） / lz兰州新区版 / hz合格证版 / fs佛山疾控版（后三者只填姓名+身份证+照片） */
-  const [tpl, setTpl] = useState<"gd" | "e" | "lz" | "hz" | "fs" | "sl">("gd");
+  const [tpl, setTpl] = useState<"gd" | "e" | "lz" | "hz" | "fs" | "sl" | "ml">("gd");
   const [photo, setPhoto] = useState("");
   const [upMsg, setUpMsg] = useState("");
   const [ret, setRet] = useState<any>(null);
@@ -132,7 +133,7 @@ export default function Home() {
     if (!photo) { setErr("请先拍照/上传照片"); return; }
     try {
       setOk("生成中…");
-      const payload = (tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl")
+      const payload = (tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml")
         ? { name: f.name, idCard: f.idCard, photoUrl: photo, template: tpl }
         : tpl === "e"
           ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl }
@@ -201,9 +202,9 @@ export default function Home() {
           <section style={card}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>填写信息</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
-              {(["gd", "e", "lz", "hz", "fs", "sl"] as const).map((t) => (
+              {(["gd", "e", "lz", "hz", "fs", "sl", "ml"] as const).map((t) => (
                 <button key={t} onClick={() => setTpl(t)} style={{ borderRadius: 10, padding: "10px 2px", fontSize: 12, fontWeight: 700, border: tpl === t ? `2px solid ${BLUE}` : "1px solid #d0ddf5", background: tpl === t ? "#e8f1ff" : "#fff", color: tpl === t ? BLUE : "#7a8bb0" }}>
-                  {t === "gd" ? "任意地区版" : t === "e" ? "直辖市版" : t === "lz" ? "兰州新区版" : t === "hz" ? "合格证版" : t === "fs" ? "佛山疾控版" : "小鸟商洛"}
+                  {t === "gd" ? "任意地区版" : t === "e" ? "直辖市版" : t === "lz" ? "兰州新区版" : t === "hz" ? "合格证版" : t === "fs" ? "佛山疾控版" : t === "sl" ? "小鸟商洛" : "美团乐山"}
                 </button>
               ))}
             </div>
@@ -230,7 +231,9 @@ export default function Home() {
         {/* 步骤3：白底模板 */}
         {ret?.certNo && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {ret.template === "sl" ? (
+            {ret.template === "ml" ? (
+              <CertPreview7 certNo={ret.certNo} name={f.name} gender={ret.gender} photo={photo} from={ret.from} to={ret.to} />
+            ) : ret.template === "sl" ? (
               <CertPreview6 certNo={ret.certNo} name={f.name} photo={photo} qr={ret.qr} from={ret.from} />
             ) : ret.template === "fs" ? (
               <CertPreview5 certNo={ret.certNo} name={f.name} photo={photo} qr={ret.qr} from={ret.from} />
@@ -245,7 +248,10 @@ export default function Home() {
             )}
             <button style={{ ...btn }} onClick={download}>下载图片存相册</button>
             {dlMsg && <div style={{ textAlign: "center", fontSize: 13, color: BLUE }}>{dlMsg}</div>}
-            <a style={{ ...btn, textAlign: "center", textDecoration: "none", display: "block", background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} href={ret.verifyUrl || `/v/`}>打开验真页</a>
+            {/* 美团乐山无二维码，不展示验真入口 */}
+            {ret.verifyUrl ? (
+            <a style={{ ...btn, textAlign: "center", textDecoration: "none", display: "block", background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} href={ret.verifyUrl}>打开验真页</a>
+            ) : null}
             <button style={{ ...btn, background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} onClick={() => { setRet(null); setF({ name: "", idCard: "", province: "广东省", region: "深圳" }); setPhoto(""); }}>继续办下一张</button>
           </section>
         )}
