@@ -42,10 +42,11 @@ export default async function VerifyByToken({ params }: Props) {
   const isFoodCert = c.template === "fs" || c.template === "sl";
   const isSl = c.template === "sl";
   const isMl = c.template === "ml";
+  const isSt = c.template === "st";
   return (
     <main className="mx-auto max-w-md p-4 space-y-2">
       <h1 className="text-center text-lg font-bold">
-        {isMl ? "从业人员健康检查合格证验真" : isSl ? "从业人员预防性健康检查合格证明验真" : c.template === "fs" ? "食品从业人员健康体检合格证验真" : isHz ? "从业人员健康体检卫生培训合格证验真" : c.template === "lz" ? "兰州新区从业人员电子健康证验真" : c.template === "e" ? "从业人员健康证明验真" : "广东省食品从业人员健康证明验真"}
+        {isSt ? "河北省食品药品从业人员健康合格证明验真" : isMl ? "从业人员健康检查合格证验真" : isSl ? "从业人员预防性健康检查合格证明验真" : c.template === "fs" ? "食品从业人员健康体检合格证验真" : isHz ? "从业人员健康体检卫生培训合格证验真" : c.template === "lz" ? "兰州新区从业人员电子健康证验真" : c.template === "e" ? "从业人员健康证明验真" : "广东省食品从业人员健康证明验真"}
       </h1>
       <p className={expired ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
         {expired ? "✗ 证件已过期" : "✓ 证件有效"}

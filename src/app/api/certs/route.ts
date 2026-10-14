@@ -22,10 +22,10 @@ export async function POST(req: Request) {
   const c = await cookies();
   const body = await req.json();
   const { name, idCard, province, region, photoUrl, template } = body;
-  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版 / sl 小鸟商洛版 / ml 美团乐山版（后五者无需地区） */
-  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : template === "sl" ? "sl" : template === "ml" ? "ml" : "gd";
+  /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版 / sl 小鸟商洛版 / ml 美团乐山版 / st 三通保定版（后六者无需地区） */
+  const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : template === "sl" ? "sl" : template === "ml" ? "ml" : template === "st" ? "st" : "gd";
   /** 无需填地区的模板 */
-  const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml";
+  const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml" || tpl === "st";
   if (!name || !checkIdCard(idCard || "") || (!noRegion && !region)) {
     return NextResponse.json({ error: noRegion ? "姓名/身份证(18位)必填" : "姓名/身份证(18位)/地区必填" }, { status: 400 });
   }
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
   const map = noRegion ? null : await findRegionUnit(region || "");
   const prov = tpl === "gd" ? ((province || "").trim() || "广东省") : "";
-  /** 发证机构：固定模板各自固定，其余按地区映射（美团乐山证面不显示机构，只存库供验真） */
+  /** 发证机构：固定模板各自固定，其余按地区映射（美团乐山/三通保定证面机构行即体检单位，只存库供验真） */
   const fixedOrgan = tpl === "hz"
     ? "深圳市疾病预防控制中心"
     : tpl === "fs"
@@ -67,7 +67,9 @@ export async function POST(req: Request) {
           ? "商洛市疾病预防控制中心"
           : tpl === "ml"
             ? "乐山老年病专科医院"
-            : "";
+            : tpl === "st"
+              ? "保定市疾病预防控制中心"
+              : "";
   const unitName = fixedOrgan || (map?.unitName || region.trim() + "市第一人民医院");
   const code2 = map?.regionCode || "SZ";
   const day = bjDay().replace(/-/g, "");
@@ -110,6 +112,12 @@ export async function POST(req: Request) {
       const prev = await findCertByCertNo(idCard);
       verifyToken = prev?.verifyToken || crypto.randomBytes(16).toString("hex");
     }
+  } else if (tpl === "st") {
+    /** 三通保定：018 + 月日 + 5位序号 = 12位纯数字（样张 018099305274 同格式） */
+    const prefix = "018" + day.slice(4);
+    const seq = await nextCertSeq(prefix);
+    certNo = `${prefix}${String(seq).padStart(5, "0")}`;
+    verifyToken = crypto.randomBytes(16).toString("hex");
   } else {
     /** 编号前缀与序号长度 */
     const prefix = tpl === "lz" ? day.slice(0, 4) : tpl === "hz" || tpl === "fs" ? day : code2 + day;
@@ -124,7 +132,7 @@ export async function POST(req: Request) {
     /** 二维码只携带随机 token：不可预测，不用自增 id / 身份证号 / 证书编号；美团乐山不要二维码，token 为空 */
     verifyToken,
     name, idCardMask: maskId(idCard), gender: genderOf(idCard),
-    province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : tpl === "sl" ? "商洛" : tpl === "ml" ? "乐山" : "深圳") : region,
+    province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : tpl === "sl" ? "商洛" : tpl === "ml" ? "乐山" : tpl === "st" ? "保定" : "深圳") : region,
     unitName, organ, age, template: tpl,
     category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : tpl === "ml" ? "美团外卖" : null,
     photoUrl: photoUrl || "", examDate,

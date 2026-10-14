@@ -8,6 +8,7 @@ import CertPreview4 from "@/components/CertPreview4";
 import CertPreview5 from "@/components/CertPreview5";
 import CertPreview6 from "@/components/CertPreview6";
 import CertPreview7 from "@/components/CertPreview7";
+import CertPreview8 from "@/components/CertPreview8";
 
 const BLUE = "#1677ff";
 
@@ -47,7 +48,7 @@ export default function Home() {
   const [expire, setExpire] = useState("");
   const [f, setF] = useState({ name: "", idCard: "", province: "广东省", region: "深圳" });
   /** 模板：gd任意地区版 / e直辖市版（少填省份） / lz兰州新区版 / hz合格证版 / fs佛山疾控版（后三者只填姓名+身份证+照片） */
-  const [tpl, setTpl] = useState<"gd" | "e" | "lz" | "hz" | "fs" | "sl" | "ml">("gd");
+  const [tpl, setTpl] = useState<"gd" | "e" | "lz" | "hz" | "fs" | "sl" | "ml" | "st">("gd");
   const [photo, setPhoto] = useState("");
   const [upMsg, setUpMsg] = useState("");
   const [ret, setRet] = useState<any>(null);
@@ -133,7 +134,7 @@ export default function Home() {
     if (!photo) { setErr("请先拍照/上传照片"); return; }
     try {
       setOk("生成中…");
-      const payload = (tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml")
+      const payload = (tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml" || tpl === "st")
         ? { name: f.name, idCard: f.idCard, photoUrl: photo, template: tpl }
         : tpl === "e"
           ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl }
@@ -202,9 +203,9 @@ export default function Home() {
           <section style={card}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>填写信息</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
-              {(["gd", "e", "lz", "hz", "fs", "sl", "ml"] as const).map((t) => (
+              {(["gd", "e", "lz", "hz", "fs", "sl", "ml", "st"] as const).map((t) => (
                 <button key={t} onClick={() => setTpl(t)} style={{ borderRadius: 10, padding: "10px 2px", fontSize: 12, fontWeight: 700, border: tpl === t ? `2px solid ${BLUE}` : "1px solid #d0ddf5", background: tpl === t ? "#e8f1ff" : "#fff", color: tpl === t ? BLUE : "#7a8bb0" }}>
-                  {t === "gd" ? "任意地区版" : t === "e" ? "直辖市版" : t === "lz" ? "兰州新区版" : t === "hz" ? "合格证版" : t === "fs" ? "佛山疾控版" : t === "sl" ? "小鸟商洛" : "美团乐山"}
+                  {t === "gd" ? "任意地区版" : t === "e" ? "直辖市版" : t === "lz" ? "兰州新区版" : t === "hz" ? "合格证版" : t === "fs" ? "佛山疾控版" : t === "sl" ? "小鸟商洛" : t === "ml" ? "美团乐山" : "三通保定"}
                 </button>
               ))}
             </div>
@@ -231,7 +232,9 @@ export default function Home() {
         {/* 步骤3：白底模板 */}
         {ret?.certNo && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {ret.template === "ml" ? (
+            {ret.template === "st" ? (
+              <CertPreview8 certNo={ret.certNo} name={f.name} gender={ret.gender} photo={photo} qr={ret.qr} to={ret.to} />
+            ) : ret.template === "ml" ? (
               <CertPreview7 certNo={ret.certNo} name={f.name} gender={ret.gender} photo={photo} from={ret.from} to={ret.to} />
             ) : ret.template === "sl" ? (
               <CertPreview6 certNo={ret.certNo} name={f.name} photo={photo} qr={ret.qr} from={ret.from} />
