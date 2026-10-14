@@ -20,6 +20,7 @@ export const TABLES = {
   regionUnit: "region_units",
   cert: "certs",
   certSeq: "cert_seqs",
+  notice: "notices",
 } as const;
 
 /** 账号行 */
@@ -83,6 +84,15 @@ export interface CertRow {
   updatedAt: Date;
 }
 
+/** 公告行 */
+export interface NoticeRow {
+  id: number;
+  content: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** 模型集合 */
 export interface Models {
   User: ReturnType<typeof defineUser>;
@@ -90,6 +100,7 @@ export interface Models {
   RegionUnit: ReturnType<typeof defineRegionUnit>;
   Cert: ReturnType<typeof defineCert>;
   CertSeq: ReturnType<typeof defineCertSeq>;
+  Notice: ReturnType<typeof defineNotice>;
 }
 
 function defineUser(sequelize: ReturnType<typeof getSequelize>) {
@@ -174,6 +185,18 @@ function defineCertSeq(sequelize: ReturnType<typeof getSequelize>) {
   );
 }
 
+function defineNotice(sequelize: ReturnType<typeof getSequelize>) {
+  return sequelize.define(
+    "Notice",
+    {
+      id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
+      content: { type: DataTypes.TEXT, allowNull: false },
+      createdBy: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "admin" },
+    },
+    { tableName: TABLES.notice, engine: "InnoDB", charset: "utf8mb4" },
+  );
+}
+
 let _models: Models | null = null;
 
 /** 获取模型集合（懒初始化，进程内缓存） */
@@ -186,6 +209,7 @@ export function getModels(): Models {
       RegionUnit: defineRegionUnit(sequelize),
       Cert: defineCert(sequelize),
       CertSeq: defineCertSeq(sequelize),
+      Notice: defineNotice(sequelize),
     };
   }
   return _models;

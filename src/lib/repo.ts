@@ -16,7 +16,7 @@
  */
 import { Op } from "sequelize";
 import { getSequelize } from "./db";
-import { getModels, TABLES, type CardKeyRow, type CertRow, type RegionUnitRow, type UserRow } from "./models";
+import { getModels, TABLES, type CardKeyRow, type CertRow, type NoticeRow, type RegionUnitRow, type UserRow } from "./models";
 
 /** Sequelize 实例 + 模型行转普通对象 */
 function plain<T>(m: unknown): T {
@@ -165,4 +165,32 @@ export async function findCertByToken(token: string): Promise<CertRow | null> {
   const { Cert } = getModels();
   const row = await Cert.findOne({ where: { verifyToken: t.toLowerCase() } });
   return row ? plain<CertRow>(row) : null;
+}
+
+/** 公告：公开列表（新发的在前，未登录也能看） */
+export async function listNotices(): Promise<NoticeRow[]> {
+  const { Notice } = getModels();
+  const rows = await Notice.findAll({ order: [["id", "DESC"]] });
+  return rows.map((r) => plain<NoticeRow>(r));
+}
+
+/** 公告：一级发布 */
+export async function createNotice(content: string, createdBy: string): Promise<NoticeRow> {
+  const { Notice } = getModels();
+  const row = await Notice.create({ content, createdBy });
+  return plain<NoticeRow>(row);
+}
+
+/** 公告：一级改内容，返回是否找到 */
+export async function updateNotice(id: number, content: string): Promise<boolean> {
+  const { Notice } = getModels();
+  const [n] = await Notice.update({ content }, { where: { id } });
+  return n > 0;
+}
+
+/** 公告：一级删除，返回是否找到 */
+export async function deleteNotice(id: number): Promise<boolean> {
+  const { Notice } = getModels();
+  const n = await Notice.destroy({ where: { id } });
+  return n > 0;
 }

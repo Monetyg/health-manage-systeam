@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { NoticeBoard } from "@/components/Notices";
 
 const BLUE = "#1677ff";
 const NAMES: Record<string, string> = { HOUR_1: "1小时", DAY_1: "1天", WEEK_1: "1周", MONTH_1: "1个月" };
@@ -154,6 +155,7 @@ export default function Level2() {
           ))}
           {list.length === 0 && <div style={{ color: "#7a8bb0" }}>还没发过卡密</div>}
         </section>
+        <NoticeBoard title="公告" />
         {msg && <div style={{ textAlign: "center", color: BLUE }}>{msg}</div>}
       </div>
     </main>

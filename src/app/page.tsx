@@ -9,6 +9,7 @@ import CertPreview5 from "@/components/CertPreview5";
 import CertPreview6 from "@/components/CertPreview6";
 import CertPreview7 from "@/components/CertPreview7";
 import CertPreview8 from "@/components/CertPreview8";
+import { NoticeBoard } from "@/components/Notices";
 
 const BLUE = "#1677ff";
 
@@ -165,6 +166,7 @@ export default function Home() {
           <div style={{ color: BLUE, fontWeight: 800, fontSize: 22 }}>健康证办理</div>
           <div style={{ color: "#7a8bb0", fontSize: 13, marginTop: 4 }}>食品从业人员健康证明</div>
         </header>
+        <NoticeBoard title="公告" />
 
         {/* 步骤条 */}
         <div style={{ display: "flex", gap: 6, fontSize: 12 }}>

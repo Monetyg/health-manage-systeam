@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { NoticeManager } from "@/components/Notices";
 
 const BLUE = "#1677ff";
 
@@ -108,6 +109,7 @@ export default function Admin() {
           ))}
           {list.length === 0 && <div style={{ color: "#7a8bb0" }}>暂无二级账号</div>}
         </section>
+        <NoticeManager />
         </>
         )}
         {msg && <div style={{ textAlign: "center", color: BLUE }}>{msg}</div>}

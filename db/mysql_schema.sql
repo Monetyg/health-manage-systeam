@@ -89,3 +89,15 @@ CREATE TABLE IF NOT EXISTS `cert_seqs` (
   `seq`    INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已发到的序号',
   PRIMARY KEY (`series`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='编号序列';
+
+-- 公告功能：一级发布，多条并存可改可删，二/三级公开只读展示
+-- （与 db/mysql_notices.sql 同结构，新建库直接包含）
+CREATE TABLE IF NOT EXISTS `notices` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `content`    TEXT NOT NULL COMMENT '公告内容（不限制字数）',
+  `created_by` VARCHAR(64) NOT NULL DEFAULT 'admin' COMMENT '发布人',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公告';
