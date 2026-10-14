@@ -7,8 +7,9 @@
 ## 一、环境不变的东西（不用动，检查即可）
 
 - 服务器 38.55.146.127，站点根目录 `/www/wwwroot/monetyg-health.com`，Node 必须 20.x。
-- 主站 `https://monetyg-health.com` + 验真站 `https://verify.monetyg-health.com`，反代都指向 `http://127.0.0.1:3000`（已配好，检查即可）。
-- Cloudflare 两条 A 记录保持橙色云朵，SSL 模式 Full (strict)。
+- 主站 `https://monetyg-health.com` + 备站 `https://asxniuqw-xqjx.lol` + 验真站 `https://verify.monetyg-health.com`，反代都指向 `http://127.0.0.1:3000`（已配好，检查即可）。
+- Cloudflare 相关记录保持橙色云朵，SSL 模式 Full (strict)。
+- 双域名是故意保留的：A 域名办的证过不了审就换 B 办（已验证可行）。**不要做 301 跳转，不要合并站点。**
 
 ## 二、部署步骤（按顺序）
 
@@ -68,7 +69,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 
 ## 四、验证清单（逐项过）
 
-1. `https://monetyg-health.com` 打开正常，小锁无警告。
+1. `https://monetyg-health.com` 和 `https://asxniuqw-xqjx.lol` 都能打开，小锁无警告。
 2. 一级后台登录 → 发二级账号 → 显示"发放成功"。
 3. 一级后台最下方发一条测试公告 → 主页标题下和二级后台出现该公告 → 修改 → 删除（删干净，别留测试公告）。
 4. 二级登录 → 生成卡密 → 主页输卡密 → 8 个模板按钮都在。
