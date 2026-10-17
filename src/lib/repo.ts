@@ -194,3 +194,34 @@ export async function deleteNotice(id: number): Promise<boolean> {
   const n = await Notice.destroy({ where: { id } });
   return n > 0;
 }
+
+export interface L2Stat {
+  username: string;
+  status: string;
+  keysTotal: number;
+  keysUsed: number;
+  certsTotal: number;
+}
+
+/**
+ * 一级看板：每个二级的累计卡密 / 已使用卡密 / 办出健康证数。
+ * 健康证按“用了该二级发出的卡密（createdBy=PASS:卡密）”归属，老证同样可算，无需改表。
+ */
+export async function l2Stats(): Promise<L2Stat[]> {
+  const { User, CardKey, Cert } = getModels();
+  const users = await User.findAll({ where: { role: "L2" }, order: [["createdAt", "DESC"]] });
+  const out: L2Stat[] = [];
+  for (const u of users) {
+    const name = String((u as unknown as { username: string }).username);
+    const st = String((u as unknown as { status: string }).status);
+    const keys = await CardKey.findAll({ where: { createdByL2: name }, attributes: ["code", "status"] });
+    const codes = keys.map((k) => String((k as unknown as { code: string }).code));
+    const used = keys.filter((k) => (k as unknown as { status: string }).status !== "unused").length;
+    let certs = 0;
+    if (codes.length > 0) {
+      certs = await Cert.count({ where: { createdBy: codes.map((c) => `PASS:${c}`) } });
+    }
+    out.push({ username: name, status: st, keysTotal: keys.length, keysUsed: used, certsTotal: certs });
+  }
+  return out;
+}
