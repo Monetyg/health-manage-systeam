@@ -205,7 +205,8 @@ export interface L2Stat {
 
 /**
  * 一级看板：每个二级的累计卡密 / 已使用卡密 / 办出健康证数。
- * 健康证按“用了该二级发出的卡密（createdBy=PASS:卡密）”归属，老证同样可算，无需改表。
+ * 健康证归属该二级：办证时若用该二级账号登录，createdBy 记账号名；
+ * 若用该二级发出的卡密登录，记 PASS:卡密——两种都归到发卡的那个二级，旧证同样计入。
  */
 export async function l2Stats(): Promise<L2Stat[]> {
   const { User, CardKey, Cert } = getModels();
@@ -217,10 +218,9 @@ export async function l2Stats(): Promise<L2Stat[]> {
     const keys = await CardKey.findAll({ where: { createdByL2: name }, attributes: ["code", "status"] });
     const codes = keys.map((k) => String((k as unknown as { code: string }).code));
     const used = keys.filter((k) => (k as unknown as { status: string }).status !== "unused").length;
-    let certs = 0;
-    if (codes.length > 0) {
-      certs = await Cert.count({ where: { createdBy: codes.map((c) => `PASS:${c}`) } });
-    }
+    /** 健康证归属该二级：登录人直记的（createdBy=账号名）+ 早期用该二级卡密办的（createdBy=PASS:卡密） */
+    const owners = [`PASS:${name}`, ...codes.map((c) => `PASS:${c}`)];
+    const certs = await Cert.count({ where: { createdBy: [name, ...owners] } });
     out.push({ username: name, status: st, keysTotal: keys.length, keysUsed: used, certsTotal: certs });
   }
   return out;
