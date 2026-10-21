@@ -207,20 +207,29 @@ export interface L2Stat {
  * 一级看板：每个二级的累计卡密 / 已使用卡密 / 办出健康证数。
  * 健康证归属该二级：办证时若用该二级账号登录，createdBy 记账号名；
  * 若用该二级发出的卡密登录，记 PASS:卡密——两种都归到发卡的那个二级，旧证同样计入。
+ * since 传时间戳时只统计该时刻之后的数据（卡密按发出时间、已激活按激活时间、健康证按办证时间）。
  */
-export async function l2Stats(): Promise<L2Stat[]> {
+export async function l2Stats(since?: Date): Promise<L2Stat[]> {
   const { User, CardKey, Cert } = getModels();
+  const { Op } = await import("sequelize");
   const users = await User.findAll({ where: { role: "L2" }, order: [["createdAt", "DESC"]] });
   const out: L2Stat[] = [];
   for (const u of users) {
     const name = String((u as unknown as { username: string }).username);
     const st = String((u as unknown as { status: string }).status);
-    const keys = await CardKey.findAll({ where: { createdByL2: name }, attributes: ["code", "status"] });
+    const keyWhere: Record<string, unknown> = { createdByL2: name };
+    if (since) keyWhere.createdAt = { [Op.gte]: since };
+    const keys = await CardKey.findAll({ where: keyWhere, attributes: ["code", "status"] });
     const codes = keys.map((k) => String((k as unknown as { code: string }).code));
-    const used = keys.filter((k) => (k as unknown as { status: string }).status !== "unused").length;
+    /** 已激活：该时段内发出的卡密里已被使用的；累计视角下“作废”也算激活 */
+    const used = since
+      ? keys.filter((k) => (k as unknown as { status: string }).status === "used").length
+      : keys.filter((k) => (k as unknown as { status: string }).status !== "unused").length;
     /** 健康证归属该二级：登录人直记的（createdBy=账号名）+ 早期用该二级卡密办的（createdBy=PASS:卡密） */
-    const owners = [`PASS:${name}`, ...codes.map((c) => `PASS:${c}`)];
-    const certs = await Cert.count({ where: { createdBy: [name, ...owners] } });
+    const owners = [name, `PASS:${name}`, ...codes.map((c) => `PASS:${c}`)];
+    const certWhere: Record<string, unknown> = { createdBy: owners };
+    if (since) certWhere.createdAt = { [Op.gte]: since };
+    const certs = await Cert.count({ where: certWhere });
     out.push({ username: name, status: st, keysTotal: keys.length, keysUsed: used, certsTotal: certs });
   }
   return out;
