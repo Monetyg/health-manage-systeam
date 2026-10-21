@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { verifyDomain } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
-import { createCert, findCertByCertNo, findRegionUnit, findUserById, nextCertSeq, upsertCert } from "@/lib/repo";
+import { createCert, findCertByCertNo, findRegionUnit, findUserById, isIssuerRestricted, nextCertSeq, upsertCert } from "@/lib/repo";
 
 /** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
 function bjDay() {
@@ -52,6 +52,11 @@ export async function POST(req: Request) {
     }
   } else {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  /** 二级被一级限制时：可发卡密、可登录、可填资料，但生成健康证直接拒绝 */
+  if (await isIssuerRestricted(createdBy)) {
+    return NextResponse.json({ error: "你的IP存在风险,请稍后尝试", code: "RISK" }, { status: 403 });
   }
 
   const map = noRegion ? null : await findRegionUnit(region || "");

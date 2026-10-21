@@ -63,6 +63,37 @@ export async function setUserStatus(id: string | number, status: string): Promis
   await User.update({ status }, { where: { id: Number(id) } });
 }
 
+/** 一级切换二级的办证限制，返回切换后的值（1=已限制）；账号不存在或不是二级返回 null */
+export async function toggleUserRestricted(id: string | number): Promise<number | null> {
+  const { User } = getModels();
+  const row = await User.findByPk(Number(id));
+  if (!row) return null;
+  const cur = row as unknown as UserRow;
+  if (cur.role !== "L2") return null;
+  const next = Number(cur.restricted) === 1 ? 0 : 1;
+  await User.update({ restricted: next }, { where: { id: Number(id) } });
+  return next;
+}
+
+/**
+ * 办证限制检查：用二级账号登录办证查该账号；用卡密登录办证查发卡的那个二级。
+ * 返回 true 表示已被限制，应拒绝生成。
+ */
+export async function isIssuerRestricted(createdBy: string): Promise<boolean> {
+  const { User } = getModels();
+  let username = "";
+  if (createdBy.startsWith("PASS:")) {
+    const key = await findCardKeyByCode(createdBy.slice(5));
+    username = key?.createdByL2 || "";
+  } else {
+    username = createdBy;
+  }
+  if (!username) return false;
+  const row = await User.findOne({ where: { username, role: "L2" } });
+  if (!row) return false;
+  return Number((row as unknown as UserRow).restricted) === 1;
+}
+
 /** 账号：删除二级账号，同时把它发出去还没用的卡密作废 */
 export async function deleteL2User(id: string | number, username: string): Promise<void> {
   const { User, CardKey } = getModels();
@@ -196,8 +227,11 @@ export async function deleteNotice(id: number): Promise<boolean> {
 }
 
 export interface L2Stat {
+  id: string;
   username: string;
   status: string;
+  /** 1=已限制办证 */
+  restricted: number;
   keysTotal: number;
   keysUsed: number;
   certsTotal: number;
@@ -217,6 +251,8 @@ export async function l2Stats(since?: Date): Promise<L2Stat[]> {
   for (const u of users) {
     const name = String((u as unknown as { username: string }).username);
     const st = String((u as unknown as { status: string }).status);
+    const uid = String((u as unknown as { id: number | string }).id);
+    const restricted = Number((u as unknown as { restricted: number }).restricted) === 1 ? 1 : 0;
     const keyWhere: Record<string, unknown> = { createdByL2: name };
     if (since) keyWhere.createdAt = { [Op.gte]: since };
     const keys = await CardKey.findAll({ where: keyWhere, attributes: ["code", "status"] });
@@ -230,7 +266,7 @@ export async function l2Stats(since?: Date): Promise<L2Stat[]> {
     const certWhere: Record<string, unknown> = { createdBy: owners };
     if (since) certWhere.createdAt = { [Op.gte]: since };
     const certs = await Cert.count({ where: certWhere });
-    out.push({ username: name, status: st, keysTotal: keys.length, keysUsed: used, certsTotal: certs });
+    out.push({ id: uid, username: name, status: st, restricted, keysTotal: keys.length, keysUsed: used, certsTotal: certs });
   }
   return out;
 }

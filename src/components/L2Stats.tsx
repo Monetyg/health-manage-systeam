@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 const BLUE = "#1677ff";
 
 interface Row {
+  id: string;
   username: string;
   status: string;
+  restricted: number;
   keysTotal: number;
   keysUsed: number;
   certsTotal: number;
@@ -51,6 +53,16 @@ export function StatsBoard() {
   }, []);
 
   useEffect(() => { load(range); }, [range, load]);
+
+  /** 限制/解除限制：只影响"生成健康证"这一步，发卡密与登录不受影响 */
+  async function toggleRestrict(id: string) {
+    const res = await fetch("/api/admin/restrict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) load(range);
+  }
 
   /** 接口失败也保留卡片骨架，避免整块消失让人以为功能没了 */
   if (rows === null) {
@@ -110,6 +122,22 @@ export function StatsBoard() {
             >
               {r.status === "disabled" ? "已禁用" : "已启用"}
             </span>
+            {r.restricted === 1 ? (
+              <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 20, padding: "2px 10px", background: "#fff7e6", color: "#d48806" }}>
+                已限制办证
+              </span>
+            ) : null}
+            <button
+              onClick={() => toggleRestrict(r.id)}
+              style={{
+                marginLeft: "auto", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                background: r.restricted === 1 ? "#e6f1ff" : "#fff7e6",
+                color: r.restricted === 1 ? BLUE : "#d48806",
+                border: `1px solid ${r.restricted === 1 ? "#91caff" : "#ffd591"}`,
+              }}
+            >
+              {r.restricted === 1 ? "解除限制" : "限制"}
+            </button>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <Num label="卡密" value={r.keysTotal} />

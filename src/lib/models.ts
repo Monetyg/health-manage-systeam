@@ -31,6 +31,8 @@ export interface UserRow {
   plainPwd: string | null;
   role: "L1" | "L2";
   status: string;
+  /** 1=已限制办证 */
+  restricted: number;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -113,6 +115,8 @@ function defineUser(sequelize: ReturnType<typeof getSequelize>) {
       plainPwd: { type: DataTypes.STRING(64), allowNull: true },
       role: { type: DataTypes.STRING(8), allowNull: false, defaultValue: "L2" },
       status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: "ok" },
+      /** 1=已限制办证（可发卡密、可登录，但不能生成健康证） */
+      restricted: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 },
       createdBy: { type: DataTypes.STRING(64), allowNull: true },
     },
     { tableName: TABLES.user, engine: "InnoDB", charset: "utf8mb4" },

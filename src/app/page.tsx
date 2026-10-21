@@ -144,6 +144,10 @@ export default function Home() {
       const j = await r.json();
       setOk("");
       if (r.ok) setRet(j);
+      else if (j.code === "RISK") {
+        // 一级限制了该二级：保持登录与已填资料，只显示红字提示
+        setErr(j.error || "你的IP存在风险,请稍后尝试");
+      }
       else if (r.status === 401 || r.status === 403) {
         // 卡密过期/作废：自动退出登录，退回卡密框
         setAuthed(false);
