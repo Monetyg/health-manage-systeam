@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
 import QRCode from "qrcode";
-import { verifyDomain } from "@/lib/config";
+import { verifyDomainForHost } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
 import { createCert, findCertByCertNo, findRegionUnit, findUserById, isIssuerRestricted, nextCertSeq, upsertCert } from "@/lib/repo";
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
 
   /** 二维码统一指向验真子域名，token 落库在前：缺 token 直接报错，绝不生成扫了没用的码 */
   if (!verifyToken) return NextResponse.json({ error: "该健康证缺少验真 Token，无法生成二维码" }, { status: 500 });
-  const verifyUrl = `${verifyDomain()}/v/${verifyToken}`;
+  const verifyUrl = `${verifyDomainForHost(req.headers.get("x-forwarded-host") || req.headers.get("host") || "")}/v/${verifyToken}`;
   /** 高容错二维码：H 级纠错 + 大尺寸 + 白底黑块，兼容美团/蜂鸟等第三方严格扫码 */
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
     errorCorrectionLevel: "H",

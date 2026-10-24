@@ -57,6 +57,32 @@ export function verifyDomain(): string {
   return d || `http://localhost:${appPort()}`;
 }
 
+/** 去掉端口、转小写，便于比较域名 */
+function bareHost(host: string): string {
+  return (host || "").trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+/**
+ * 按访客进来的域名决定二维码里的验真地址。
+ * 规则：VERIFY_DOMAIN_MAP 里配了的（形如 a.com=https://verify.a.com）用配的，
+ * 没配的域用自己的域做验真站；本机/未知时退回 VERIFY_DOMAIN。
+ * 这样多个域名共用同一套界面，但每个域名办出的证二维码各指自己的验真入口。
+ */
+export function verifyDomainForHost(host: string): string {
+  const h = bareHost(host);
+  const pairs = optional("VERIFY_DOMAIN_MAP");
+  if (h) {
+    for (const item of pairs.split(",")) {
+      const [from, to] = item.split("=").map((s) => s.trim());
+      if (!from || !to) continue;
+      const key = bareHost(from);
+      if (h === key || h.endsWith(`.${key}`)) return to.replace(/\/+$/, "");
+    }
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(h)) return `https://${h}`;
+  }
+  return verifyDomain();
+}
+
 /**
  * 二维码里写入的公网地址。
  * 正常情况由 Nginx 透传的 X-Forwarded-Host 还原，这里只是兜底。
