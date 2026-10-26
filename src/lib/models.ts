@@ -47,6 +47,8 @@ export interface CardKeyRow {
   createdByL2: string | null;
   usedAt: Date | null;
   expireAt: Date | null;
+  /** 首次登录绑定的设备标识；空表示尚未绑定 */
+  boundDevice: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -134,6 +136,8 @@ function defineCardKey(sequelize: ReturnType<typeof getSequelize>) {
       createdByL2: { type: DataTypes.STRING(64), allowNull: true },
       usedAt: { type: DataTypes.DATE, allowNull: true },
       expireAt: { type: DataTypes.DATE, allowNull: true },
+      /** 首次登录绑定的设备标识：一张卡密只能在一台设备上用 */
+      boundDevice: { type: DataTypes.STRING(64), allowNull: true },
     },
     { tableName: TABLES.cardKey, engine: "InnoDB", charset: "utf8mb4" },
   );

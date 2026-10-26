@@ -127,6 +127,12 @@ export async function markCardKeyUsed(id: number, expireAt: Date): Promise<void>
   await CardKey.update({ status: "used", usedAt: new Date(), expireAt }, { where: { id } });
 }
 
+/** 卡密绑定设备：只在没绑定过时写入，避免并发下互相覆盖 */
+export async function bindCardKeyDevice(id: number, device: string): Promise<void> {
+  const { CardKey } = getModels();
+  await CardKey.update({ boundDevice: device }, { where: { id, boundDevice: null } });
+}
+
 /** 卡密：置为已过期 */
 export async function markCardKeyExpired(id: number): Promise<void> {
   const { CardKey } = getModels();

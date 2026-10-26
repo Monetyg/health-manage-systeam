@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { verifyDomainForHost } from "@/lib/config";
 import { readToken } from "@/lib/auth";
 import { checkIdCard, genderOf, maskId } from "@/lib/biz";
-import { createCert, findCertByCertNo, findRegionUnit, findUserById, isIssuerRestricted, nextCertSeq, upsertCert } from "@/lib/repo";
+import { createCert, findCardKeyByCode, findCertByCertNo, findRegionUnit, findUserById, isIssuerRestricted, nextCertSeq, upsertCert } from "@/lib/repo";
 
 /** 北京时间今天（UTC+8）：避免0-8点编号/体检日期差一天 */
 function bjDay() {
@@ -50,6 +50,12 @@ export async function POST(req: Request) {
   } else if (pass) {
     try {
       const p = await readToken<{ code: string }>(pass);
+      /** 卡密已绑定设备：换了设备（dev cookie 不同）不允许继续用 */
+      const k = await findCardKeyByCode(p.code);
+      const dev = c.get("dev")?.value || "";
+      if (k?.boundDevice && k.boundDevice !== dev) {
+        return NextResponse.json({ error: "该卡密已在其他设备登录", code: "DEVICE" }, { status: 403 });
+      }
       createdBy = "PASS:" + p.code;
     } catch {
       return NextResponse.json({ error: "卡密已过期，请用新卡密登录" }, { status: 403 });

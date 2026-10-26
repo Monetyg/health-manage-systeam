@@ -163,6 +163,12 @@ export default function Home() {
         // 一级限制了该二级：保持登录与已填资料，只显示红字提示
         setErr(j.error || "你的IP存在风险,请稍后尝试");
       }
+      else if (j.code === "DEVICE") {
+        // 卡密已在别的设备登录：直接退回卡密框并说明原因
+        setAuthed(false);
+        setRet(null);
+        setErr(j.error || "该卡密已在其他设备登录");
+      }
       else if (r.status === 401 || r.status === 403) {
         // 卡密过期/作废：自动退出登录，退回卡密框
         setAuthed(false);
