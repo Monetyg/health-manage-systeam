@@ -47,7 +47,7 @@ export default function Home() {
   const [ok, setOk] = useState("");
   const [authed, setAuthed] = useState(false);
   const [expire, setExpire] = useState("");
-  const [f, setF] = useState({ name: "", idCard: "", province: "广东省", region: "深圳" });
+  const [f, setF] = useState({ name: "", idCard: "", gender: "", province: "广东省", region: "深圳" });
   /** 模板：gd任意地区版 / e直辖市版（少填省份） / lz兰州新区版 / hz合格证版 / fs佛山疾控版（后三者只填姓名+身份证+照片） */
   const [tpl, setTpl] = useState<"gd" | "e" | "lz" | "hz" | "fs" | "sl" | "ml" | "st">("gd");
   const [photo, setPhoto] = useState("");
@@ -108,6 +108,19 @@ export default function Home() {
     } catch (e) { setOk(""); setErr("网络异常，请重试"); }
   }
 
+  /** 退出登录：清掉卡密登录态，回到卡密框 */
+  async function logout() {
+    try { await fetch("/api/pass/logout", { method: "POST" }); } catch { /* 网络异常也照样回登录页 */ }
+    setAuthed(false);
+    setExpire("");
+    setRet(null);
+    setPhoto("");
+    setErr("");
+    setOk("");
+    setCode("");
+    setF({ name: "", idCard: "", gender: "", province: "广东省", region: "深圳" });
+  }
+
   /** 本地相册选择上传（不强制相机）：先转成浏览器一定能显示的JPG再预览+上传 */
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -131,14 +144,16 @@ export default function Home() {
   async function submit() {
     setErr("");
     if (!f.name.trim()) { setErr("请填写姓名"); return; }
-    if (f.idCard.trim().length !== 18) { setErr("身份证号需18位"); return; }
+    if (!f.idCard.trim()) { setErr("请填写身份证号"); return; }
+    /** 证件上要印性别：身份证不足18位时推不出，必须手动选 */
+    if (!f.gender && !/^\d{17}[\dXx]$/.test(f.idCard.trim())) { setErr("请选择性别"); return; }
     if (!photo) { setErr("请先拍照/上传照片"); return; }
     try {
       setOk("生成中…");
       const payload = (tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml" || tpl === "st")
-        ? { name: f.name, idCard: f.idCard, photoUrl: photo, template: tpl }
+        ? { name: f.name, idCard: f.idCard, gender: f.gender, photoUrl: photo, template: tpl }
         : tpl === "e"
-          ? { name: f.name, idCard: f.idCard, region: f.region, photoUrl: photo, template: tpl }
+          ? { name: f.name, idCard: f.idCard, gender: f.gender, region: f.region, photoUrl: photo, template: tpl }
           : { ...f, photoUrl: photo, template: tpl };
       const r = await fetch("/api/certs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const j = await r.json();
@@ -197,10 +212,16 @@ export default function Home() {
         )}
         {checking && <div style={{ textAlign: "center", color: "#7a8bb0" }}>正在确认登录状态…</div>}
 
-        {/* 登录成功提示 */}
+        {/* 登录成功提示 + 退出登录 */}
         {authed && (
-          <div style={{ ...card, borderLeft: `4px solid ${BLUE}` }}>
-            <div style={{ color: BLUE, fontWeight: 700 }}>✓ 登录成功，有效期至 {expire}</div>
+          <div style={{ ...card, borderLeft: `4px solid ${BLUE}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ color: BLUE, fontWeight: 700, fontSize: 14 }}>✓ 登录成功，有效期至 {expire}</div>
+            <button
+              onClick={logout}
+              style={{ flexShrink: 0, borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 700, background: "#fff", color: "#7a8bb0", border: "1px solid #d0ddf5" }}
+            >
+              退出登录
+            </button>
           </div>
         )}
 
@@ -217,7 +238,23 @@ export default function Home() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <input style={input} placeholder="姓名" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-              <input style={input} placeholder="身份证号（18位）" maxLength={18} inputMode="numeric" value={f.idCard} onChange={(e) => setF({ ...f, idCard: e.target.value })} />
+              <input style={input} placeholder="身份证号" inputMode="numeric" value={f.idCard} onChange={(e) => setF({ ...f, idCard: e.target.value })} />
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["男", "女"] as const).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setF({ ...f, gender: g })}
+                    style={{
+                      flex: 1, borderRadius: 10, padding: "10px 0", fontSize: 14, fontWeight: 700, cursor: "pointer",
+                      border: f.gender === g ? `2px solid ${BLUE}` : "1px solid #d0ddf5",
+                      background: f.gender === g ? "#e8f1ff" : "#fff",
+                      color: f.gender === g ? BLUE : "#7a8bb0",
+                    }}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
               {tpl === "gd" && <input style={input} placeholder="省份（如广东省）" value={f.province} onChange={(e) => setF({ ...f, province: e.target.value })} />}
               {(tpl === "gd" || tpl === "e") && <input style={input} placeholder={tpl === "e" ? "直辖市（如北京）" : "地区（如深圳）"} value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />}
               <label style={{ ...btn, textAlign: "center", background: "#fff", color: BLUE, border: `2px dashed ${BLUE}`, display: "block" }}>
@@ -261,7 +298,7 @@ export default function Home() {
             {ret.verifyUrl ? (
             <a style={{ ...btn, textAlign: "center", textDecoration: "none", display: "block", background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} href={ret.verifyUrl}>打开验真页</a>
             ) : null}
-            <button style={{ ...btn, background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} onClick={() => { setRet(null); setF({ name: "", idCard: "", province: "广东省", region: "深圳" }); setPhoto(""); }}>继续办下一张</button>
+            <button style={{ ...btn, background: "#fff", color: BLUE, border: `1px solid ${BLUE}` }} onClick={() => { setRet(null); setF({ name: "", idCard: "", gender: "", province: "广东省", region: "深圳" }); setPhoto(""); }}>继续办下一张</button>
           </section>
         )}
       </div>

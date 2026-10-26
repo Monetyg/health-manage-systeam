@@ -21,13 +21,17 @@ function bjDay() {
 export async function POST(req: Request) {
   const c = await cookies();
   const body = await req.json();
-  const { name, idCard, province, region, photoUrl, template } = body;
+  const { name, idCard, province, region, photoUrl, template, gender } = body;
   /** 模板：gd 任意地区版 / e 直辖市版 / lz 兰州新区版 / hz 合格证版 / fs 佛山疾控版 / sl 小鸟商洛版 / ml 美团乐山版 / st 三通保定版（后六者无需地区） */
   const tpl = template === "e" ? "e" : template === "lz" ? "lz" : template === "hz" ? "hz" : template === "fs" ? "fs" : template === "sl" ? "sl" : template === "ml" ? "ml" : template === "st" ? "st" : "gd";
   /** 无需填地区的模板 */
   const noRegion = tpl === "lz" || tpl === "hz" || tpl === "fs" || tpl === "sl" || tpl === "ml" || tpl === "st";
   if (!name || !checkIdCard(idCard || "") || (!noRegion && !region)) {
-    return NextResponse.json({ error: noRegion ? "姓名/身份证(18位)必填" : "姓名/身份证(18位)/地区必填" }, { status: 400 });
+    return NextResponse.json({ error: noRegion ? "姓名/身份证号必填" : "姓名/身份证号/地区必填" }, { status: 400 });
+  }
+  /** 商洛/乐山编号直接取身份证号，列宽 32，超长直接拒绝避免入库报错 */
+  if (String(idCard).trim().length > 32) {
+    return NextResponse.json({ error: "身份证号过长" }, { status: 400 });
   }
   let createdBy = "L1/L2";
   const pass = c.get("pass")?.value;
@@ -79,7 +83,9 @@ export async function POST(req: Request) {
   const code2 = map?.regionCode || "SZ";
   const day = bjDay().replace(/-/g, "");
   const examDate = bjDay();
-  /** 年龄：身份证7-14位出生日期算周岁，算不出填-- */
+  /** 性别：优先用页面选择；没选时尝试从身份证第17位推断，推不出留空 */
+  const finalGender = gender === "男" || gender === "女" ? gender : genderOf(idCard || "");
+  /** 年龄：身份证7-14位出生日期算周岁；号码不是18位或日期不合理时填-- */
   let age = "--";
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(idCard.slice(6, 14));
   if (m) {
@@ -88,7 +94,8 @@ export async function POST(req: Request) {
       const now = new Date();
       let a = now.getFullYear() - bd.getFullYear();
       if (now.getMonth() + 1 < bd.getMonth() + 1 || (now.getMonth() + 1 === bd.getMonth() + 1 && now.getDate() < bd.getDate())) a--;
-      age = String(a);
+      /** 0-120 之外视为号码不全/填错，不写进库（age 列只有4位） */
+      if (a >= 0 && a <= 120) age = String(a);
     }
   }
   const organ = fixedOrgan || region.trim() + "市疾病预防控制中心";
@@ -136,7 +143,7 @@ export async function POST(req: Request) {
     certNo,
     /** 二维码只携带随机 token：不可预测，不用自增 id / 身份证号 / 证书编号；美团乐山不要二维码，token 为空 */
     verifyToken,
-    name, idCardMask: maskId(idCard), gender: genderOf(idCard),
+    name, idCardMask: maskId(idCard), gender: finalGender,
     province: prov, region: noRegion ? (tpl === "lz" ? "兰州新区" : tpl === "fs" ? "佛山" : tpl === "sl" ? "商洛" : tpl === "ml" ? "乐山" : tpl === "st" ? "保定" : "深圳") : region,
     unitName, organ, age, template: tpl,
     category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : tpl === "ml" ? "美团外卖" : null,
@@ -148,7 +155,7 @@ export async function POST(req: Request) {
 
   /** 美团乐山不要二维码：直接返回空码，前端不展示二维码与验真入口 */
   if (isMl) {
-    return NextResponse.json({ certNo, verifyUrl: "", qr: "", unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: "美团外卖", from: examDate, to, template: tpl });
+    return NextResponse.json({ certNo, verifyUrl: "", qr: "", unitName, province: prov, gender: finalGender, mask: maskId(idCard), age, organ, category: "美团外卖", from: examDate, to, template: tpl });
   }
 
   /** 二维码统一指向验真子域名，token 落库在前：缺 token 直接报错，绝不生成扫了没用的码 */
@@ -161,5 +168,5 @@ export async function POST(req: Request) {
     margin: 4,
     color: { dark: "#000000", light: "#ffffff" },
   });
-  return NextResponse.json({ certNo, verifyUrl, qr: qrDataUrl, unitName, province: prov, gender: genderOf(idCard), mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : undefined, from: examDate, to, template: tpl });
+  return NextResponse.json({ certNo, verifyUrl, qr: qrDataUrl, unitName, province: prov, gender: finalGender, mask: maskId(idCard), age, organ, category: tpl === "lz" || tpl === "fs" || tpl === "sl" ? "食品" : undefined, from: examDate, to, template: tpl });
 }
