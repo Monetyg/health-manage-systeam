@@ -25,18 +25,19 @@ export async function POST(req: Request) {
   let dev = c.get(DEV_COOKIE)?.value || "";
   const isNewDevice = !dev;
   if (isNewDevice) dev = crypto.randomBytes(16).toString("hex");
-  if (k.boundDevice && k.boundDevice !== dev) {
-    return NextResponse.json({ error: "该卡密已在其他设备登录" }, { status: 403 });
-  }
 
   let expireAt = k.expireAt ? new Date(k.expireAt) : null;
   if (k.status === "unused") {
     expireAt = new Date(Date.now() + durationMs(k.type));
     await markCardKeyUsed(k.id, expireAt);
   }
+  /** 先判过期再判设备：过期卡密报“已过期”，别让人误以为是设备问题 */
   if (expireAt && expireAt < new Date()) {
     await markCardKeyExpired(k.id);
-    return NextResponse.json({ error: "卡密已过期" }, { status: 403 });
+    return NextResponse.json({ error: "卡密已过期，请用新卡密", code: "EXPIRED" }, { status: 403 });
+  }
+  if (k.boundDevice && k.boundDevice !== dev) {
+    return NextResponse.json({ error: "该卡密已在其他设备登录", code: "DEVICE" }, { status: 403 });
   }
   if (!k.boundDevice) await bindCardKeyDevice(k.id, dev);
 

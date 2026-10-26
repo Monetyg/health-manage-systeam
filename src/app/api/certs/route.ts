@@ -36,32 +36,43 @@ export async function POST(req: Request) {
   let createdBy = "L1/L2";
   const pass = c.get("pass")?.value;
   const token = c.get("token")?.value;
+  /** 后台账号登录态与卡密登录态可能同时存在（同一个浏览器里先登后台再用卡密）。
+   *  token 失效不能直接判定失败，要退回用 pass，否则会把"卡密有效但后台掉线"误报成卡密失效。 */
+  let authed = false;
   if (token) {
     try {
       const me = await readToken<{ uid: string; username: string }>(token);
       const u = await findUserById(me.uid);
-      if (!u || u.status === "disabled") {
+      if (!u) {
+        /** 账号已不存在：当作没登录，继续尝试卡密登录态 */
+      } else if (u.status === "disabled") {
         return NextResponse.json({ error: "账号已禁用", disabled: true }, { status: 403 });
+      } else {
+        createdBy = u.username;
+        authed = true;
       }
-      createdBy = u.username;
     } catch {
-      return NextResponse.json({ error: "登录已过期，请重新登录" }, { status: 401 });
+      /** token 过期/密钥不匹配：忽略，继续尝试 pass */
     }
-  } else if (pass) {
+  }
+  if (!authed && pass) {
+    let p: { code: string } | null = null;
     try {
-      const p = await readToken<{ code: string }>(pass);
-      /** 卡密已绑定设备：换了设备（dev cookie 不同）不允许继续用 */
-      const k = await findCardKeyByCode(p.code);
-      const dev = c.get("dev")?.value || "";
-      if (k?.boundDevice && k.boundDevice !== dev) {
-        return NextResponse.json({ error: "该卡密已在其他设备登录", code: "DEVICE" }, { status: 403 });
-      }
-      createdBy = "PASS:" + p.code;
+      p = await readToken<{ code: string }>(pass);
     } catch {
-      return NextResponse.json({ error: "卡密已过期，请用新卡密登录" }, { status: 403 });
+      return NextResponse.json({ error: "卡密已失效，请用新卡密登录" }, { status: 403, headers: { "x-auth-reason": "pass-expired" } });
     }
-  } else {
-    return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    /** 卡密已绑定设备：换了设备（dev cookie 不同）不允许继续用 */
+    const k = await findCardKeyByCode(p.code);
+    const dev = c.get("dev")?.value || "";
+    if (k?.boundDevice && k.boundDevice !== dev) {
+      return NextResponse.json({ error: "该卡密已在其他设备登录", code: "DEVICE" }, { status: 403 });
+    }
+    createdBy = "PASS:" + p.code;
+    authed = true;
+  }
+  if (!authed) {
+    return NextResponse.json({ error: "登录已过期，请重新登录" }, { status: 401 });
   }
 
   /** 二级被一级限制时：可发卡密、可登录、可填资料，但生成健康证直接拒绝 */

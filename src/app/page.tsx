@@ -170,10 +170,10 @@ export default function Home() {
         setErr(j.error || "该卡密已在其他设备登录");
       }
       else if (r.status === 401 || r.status === 403) {
-        // 卡密过期/作废：自动退出登录，退回卡密框
+        // 卡密过期/作废：自动退出登录，退回卡密框（用后端原文，不要一律说卡密失效）
         setAuthed(false);
         setRet(null);
-        setErr("卡密已失效，请用新卡密重新登录");
+        setErr(j.error || "卡密已失效，请用新卡密重新登录");
       }
       else setErr(j.error || "生成失败");
     } catch { setOk(""); setErr("网络异常，请重试"); }
