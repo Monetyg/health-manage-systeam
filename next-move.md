@@ -1,4 +1,4 @@
-﻿# 发给 workbuddy：本次增量部署（15 个提交，一次上线）
+﻿# 发给 workbuddy：本次增量部署（17 个提交，一次上线）
 
 > 直接复制本文件全文发给 workbuddy。密码相关留了【待填】，发出前填好。
 
@@ -29,7 +29,7 @@ cd /www/wwwroot/monetyg-health.com
 git pull
 ```
 
-`git log --oneline -15` 应能看到 `aa325b3` 在最上面（本次最新提交）。
+`git log --oneline -17` 应能看到 `e54fd05` 在最上面（本次最新提交）。
 
 ```bash
 mysql -uhealth -p health_cert < db/mysql_verify_token.sql
@@ -101,6 +101,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 14. `dc0a25b` 三处改动：①登录成功后横幅右侧加“退出登录”按钮；②身份证号不再强制 18 位（非空即可，只允许数字和 X）；③性别改为页面手动选男女（身份证不足 18 位时必须选，够 18 位不选仍自动推断）。
 15. `aa325b3` 卡密绑定单设备：一张卡密首次登录时绑定当前设备，之后换设备登录提示“该卡密已在其他设备登录”；退出登录不解锁设备，老卡密只认第一次绑定的那台。
 
+二维码地址与登录态修复：
+16. `058b61f` 两个修复：①后台登录 cookie（token）失效时不再直接判定失败，会回退用卡密登录态，解决“卡密明明有效却提示已失效”；②卡密登录先判过期再判设备，过期卡密不会误报“已在其他设备登录”。
+17. `e54fd05` 二维码地址改版：从 `/v/{token}` 改成 `/img/mob10/{token}.html`（形如 `/img/mob10/179325641801536.html`）；**旧地址 `/v/{token}` 继续可用**，已印出去的证照常能扫。
+
 ## 四、验证清单（逐项过）
 
 基础：
@@ -132,16 +136,17 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 模板与二维码：
 13. 二级登录 → 生成卡密 → 主页输卡密 → 8 个模板按钮都在。
 14. 选“三通保定”办一张证：12 位纯数字编号、有效期=办证+365 天、上方证套区不占太多高度、红章完全在卡片内不溢出、二维码在左照片在右。
-15. **多域名二维码分流（本次重点）**：分别从三个域名各办一张带二维码的证（如三通保定），检查二维码地址：
-    - 从 `monetyg-health.com` 办 → `https://verify.monetyg-health.com/v/{token}`
-    - 从 `asxniuqw-xqjx.lol` 办 → `https://asxniuqw-xqjx.lol/v/{token}`
-    - 从 `dwafadwafadwa.xyz` 办 → `https://dwafadwafadwa.xyz/v/{token}`
+15. **多域名二维码分流（本次重点）**：分别从三个域名各办一张带二维码的证（如三通保定），检查二维码地址（注意新格式是 `/img/mob10/{token}.html`）：
+    - 从 `monetyg-health.com` 办 → `https://verify.monetyg-health.com/img/mob10/{token}.html`
+    - 从 `asxniuqw-xqjx.lol` 办 → `https://asxniuqw-xqjx.lol/img/mob10/{token}.html`
+    - 从 `dwafadwafadwa.xyz` 办 → `https://dwafadwafadwa.xyz/img/mob10/{token}.html`
     （若某个域名办出的码不是对应自己的域名，多半是那个站点缺 `proxy_set_header Host $host`，回一·B 检查）
 16. 手机扫上面任一二维码，能打开对应域名、显示“证件有效”。
-17. 访问 `https://verify.monetyg-health.com/v/` + 64 个 0，应显示验真失败（不是 500 白屏）。
+17. 访问 `https://verify.monetyg-health.com/img/mob10/` + 32 个 0 + `.html`，应显示验真失败（不是 500 白屏）。
+18. **老地址兼容**：把新办那张证的 token 换成 `/v/{token}` 打开，也应显示“证件有效”（历史已印的证靠这个继续能扫）。
 
 日志：
-18. `pm2 logs` 无报错、无重复崩溃重启。
+19. `pm2 logs` 无报错、无重复崩溃重启。
 
 ## 五、已知坑点
 
@@ -151,5 +156,6 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
 - **Nginx 的 `proxy_set_header Host $host` 三站都要有**，缺了二维码会指错域名（本次新增功能的命脉）。
 - **卡密绑定设备清 cookie 就解不开**：这是产品决定（换手机/清缓存的卡密会彻底失效，没有解绑入口），客户问起来别答“能解绑”，要按“锁死”口径说明。
 - 老卡密（部署前已经发出去、已登录的）不受影响，继续用；它们会在下一次登录时绑定当时那台设备。
-- 验证第 12 步和第 15 步是本次重点，务必用两个不同浏览器 + 三个域名分别核对。
+- **二维码地址改成了 `/img/mob10/{token}.html`**，这只是外观形状，域名仍是自己的三个域名，**不能**指向别人的站。老地址 `/v/{token}` 保留，不要删。
+- 验证第 12、15、18 步是本次重点，务必用两个不同浏览器 + 三个域名 + 新旧两种地址分别核对。
 - 任何一步报错先停，把报错原文发我，不要猜着往下走。
